@@ -1,0 +1,62 @@
+# Build directories
+/build/
+/out/
+/bin/
+/x64/
+/Debug/
+/Release/
+/cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Makefile
+
+# Visual Studio
+.vs/
+*.VC.db
+*.VC.VC.opendb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# MSBuild / Visual Studio intermediate files
+*.obj
+*.iobj
+*.ipdb
+*.pch
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.lastbuildstate
+
+# Generated project files
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+
+# Binaries
+*.lib
+*.dll
+*.exe
+*.exp
+
+# Logs / temp
+*.log
+*.tmp
+*.temp
+
+# Local point cloud data
+*.xyzn
+*.xyzn.bin
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
