@@ -33,11 +33,11 @@ target_include_directories(${szProjectName}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# Копируем папку shaders рядом с exe:
+# Копируем папку shaders рядом с exe.
 # build/Debug/shaders
 # build/Release/shaders
 add_custom_command(TARGET ${szProjectName} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/shaders
-            $<TARGET_FILE_DIR:${szProjectName}>/shaders
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+        $<TARGET_FILE_DIR:${szProjectName}>/shaders
 )
