@@ -15,11 +15,30 @@ add_subdirectory(external/glfw)
 add_subdirectory(external/glad)
 add_subdirectory(external/glm)
 
+source_group("Source Files" FILES
+    src/main.cpp
+    src/OrbitCamera.h
+    src/OrbitCamera.cpp
+)
+
+source_group("Shaders" FILES
+    shaders/fullscreen_triangle.vert
+    shaders/grid.frag
+)
+
+set_source_files_properties(
+    shaders/fullscreen_triangle.vert
+    shaders/grid.frag
+    PROPERTIES
+        HEADER_FILE_ONLY TRUE
+)
+
 add_executable(${szProjectName}
     src/main.cpp
+    src/OrbitCamera.h
+    src/OrbitCamera.cpp
 
     shaders/fullscreen_triangle.vert
-    shaders/fullscreen_triangle.frag
     shaders/grid.frag
 )
 
