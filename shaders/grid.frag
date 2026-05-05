@@ -27,11 +27,19 @@ uniform float uMinorThickness;
 uniform float uMajorThickness;
 uniform float uAxisThickness;
 
-uniform vec4 uPlaneColor;
-uniform vec4 uMinorColor;
-uniform vec4 uMajorColor;
-uniform vec4 uXAxisColor;
-uniform vec4 uYAxisColor;
+// Цвета верхней стороны сетки.
+uniform vec4 uPlaneColorTop;
+uniform vec4 uMinorColorTop;
+uniform vec4 uMajorColorTop;
+uniform vec4 uXAxisColorTop;
+uniform vec4 uYAxisColorTop;
+
+// Цвета нижней стороны сетки.
+uniform vec4 uPlaneColorBottom;
+uniform vec4 uMinorColorBottom;
+uniform vec4 uMajorColorBottom;
+uniform vec4 uXAxisColorBottom;
+uniform vec4 uYAxisColorBottom;
 
 double DistanceToGridLine(double x, double step)
 {
@@ -57,9 +65,6 @@ float CreateDotMask(
 )
 {
     // Переводим расстояние до узла в условные экранные единицы.
-    //
-    // Если dx примерно равен fx, значит по X точка удалена примерно на 1 пиксель.
-    // То же самое для dy/fy.
     vec2 d = vec2(
         float(dx) / fx,
         float(dy) / fy
@@ -76,11 +81,13 @@ void main()
 {
     vec2 fragCoord = gl_FragCoord.xy;
 
+    // Координата пикселя в OpenGL NDC.
     vec2 ndc = vec2(
         fragCoord.x / float(uViewportSize.x) * 2.0 - 1.0,
         fragCoord.y / float(uViewportSize.y) * 2.0 - 1.0
     );
 
+    // OpenGL: near plane = -1, far plane = +1.
     dvec4 nearClip = dvec4(ndc, -1.0, 1.0);
     dvec4 farClip  = dvec4(ndc,  1.0, 1.0);
 
@@ -95,7 +102,8 @@ void main()
 
     double denom = dot(rayDir, uGridNormal);
 
-    // Не рисуем сетку, если смотрим почти вдоль её плоскости.
+    // Если смотрим почти вдоль плоскости, сетку не рисуем:
+    // в этом положении она визуально становится нестабильной.
     if (abs(denom) < uMinViewNormalDot)
     {
         discard;
@@ -115,13 +123,7 @@ void main()
     double gx = dot(local, uGridAxisX);
     double gy = dot(local, uGridAxisY);
 
-    // Ограниченная сетка.
-    //
-    // Границы заданы в локальных координатах сетки:
-    // uGridBounds.x = minX
-    // uGridBounds.y = minY
-    // uGridBounds.z = maxX
-    // uGridBounds.w = maxY
+    // Ограничение прямоугольником в локальной СК сетки.
     if (uIsBounded)
     {
         if (
@@ -154,11 +156,7 @@ void main()
 
     if (uDrawDots)
     {
-        // Режим точек.
-        //
-        // Узел сетки — это место, где одновременно:
-        // gx близок к кратному step
-        // gy близок к кратному step
+        // Режим точек в узлах сетки.
         minorMask = CreateDotMask(
             dxMinor,
             dyMinor,
@@ -175,14 +173,12 @@ void main()
             uDotRadius * 1.35
         );
 
-        // Оси в режиме точек пока оставляем линиями:
-        // так лучше видно направление X/Y.
-        xAxisMask = CreateLineMask(abs(gy), fy, uAxisThickness);
-        yAxisMask = CreateLineMask(abs(gx), fx, uAxisThickness);
+        // Оси оставляем линиями, чтобы направление X/Y было хорошо видно.
+        xAxisMask = CreateLineMask(abs(gy), fx, uAxisThickness);
+        yAxisMask = CreateLineMask(abs(gx), fy, uAxisThickness);
     }
     else
     {
-        // Режим линий.
         float minorX = CreateLineMask(dxMinor, fx, uMinorThickness);
         float minorY = CreateLineMask(dyMinor, fy, uMinorThickness);
         minorMask = max(minorX, minorY);
@@ -195,12 +191,21 @@ void main()
         yAxisMask = CreateLineMask(abs(gx), fx, uAxisThickness);
     }
 
-    vec4 color = uPlaneColor;
+    // denom < 0 означает, что луч смотрит на сторону нормали.
+    bool isTopSide = denom < 0.0;
 
-    color = mix(color, uMinorColor, minorMask);
-    color = mix(color, uMajorColor, majorMask);
-    color = mix(color, uXAxisColor, xAxisMask);
-    color = mix(color, uYAxisColor, yAxisMask);
+    vec4 planeColor = isTopSide ? uPlaneColorTop : uPlaneColorBottom;
+    vec4 minorColor = isTopSide ? uMinorColorTop : uMinorColorBottom;
+    vec4 majorColor = isTopSide ? uMajorColorTop : uMajorColorBottom;
+    vec4 xAxisColor = isTopSide ? uXAxisColorTop : uXAxisColorBottom;
+    vec4 yAxisColor = isTopSide ? uYAxisColorTop : uYAxisColorBottom;
+
+    vec4 color = planeColor;
+
+    color = mix(color, minorColor, minorMask);
+    color = mix(color, majorColor, majorMask);
+    color = mix(color, xAxisColor, xAxisMask);
+    color = mix(color, yAxisColor, yAxisMask);
 
     if (color.a <= 0.001)
     {
@@ -210,12 +215,13 @@ void main()
     dvec4 clip = uViewProj * dvec4(worldPos, 1.0);
     double ndcZ = clip.z / clip.w;
 
+    // OpenGL NDC z: [-1, 1]
+    // Depth buffer: [0, 1]
     double depth = ndcZ * 0.5 + 0.5;
 
-    if (depth < 0.0 || depth > 1.0)
-    {
-        discard;
-    }
+    // По заданию: если глубина выходит за область отсечения,
+    // не обязательно отбрасывать фрагмент — можно прижать её к границе.
+    depth = clamp(depth, 0.0, 1.0);
 
     gl_FragDepth = float(depth);
     outColor = color;

@@ -27,11 +27,19 @@ CGridRenderer::CGridRenderer()
     m_sStyle.bDrawDots = false;
     m_sStyle.fDotRadius = 2.0f;
 
-    m_sStyle.vPlaneColor = glm::vec4(0.03f, 0.03f, 0.035f, 0.35f);
-    m_sStyle.vMinorColor = glm::vec4(0.32f, 0.32f, 0.34f, 0.55f);
-    m_sStyle.vMajorColor = glm::vec4(0.58f, 0.58f, 0.62f, 0.75f);
-    m_sStyle.vXAxisColor = glm::vec4(0.95f, 0.12f, 0.12f, 0.95f);
-    m_sStyle.vYAxisColor = glm::vec4(0.15f, 0.85f, 0.20f, 0.95f);
+    m_sStyle.vPlaneColorTop = glm::vec4(0.03f, 0.03f, 0.035f, 0.35f);
+    m_sStyle.vMinorColorTop = glm::vec4(0.32f, 0.32f, 0.34f, 0.55f);
+    m_sStyle.vMajorColorTop = glm::vec4(0.58f, 0.58f, 0.62f, 0.75f);
+    m_sStyle.vXAxisColorTop = glm::vec4(0.95f, 0.12f, 0.12f, 0.95f);
+    m_sStyle.vYAxisColorTop = glm::vec4(0.15f, 0.85f, 0.20f, 0.95f);
+
+    // Для нижней стороны цвета можно сделать чуть темнее,
+    // чтобы сразу было видно, что используется второй набор.
+    m_sStyle.vPlaneColorBottom = glm::vec4(0.025f, 0.025f, 0.03f, 0.30f);
+    m_sStyle.vMinorColorBottom = glm::vec4(0.24f, 0.24f, 0.26f, 0.45f);
+    m_sStyle.vMajorColorBottom = glm::vec4(0.42f, 0.42f, 0.46f, 0.65f);
+    m_sStyle.vXAxisColorBottom = glm::vec4(0.65f, 0.08f, 0.08f, 0.85f);
+    m_sStyle.vYAxisColorBottom = glm::vec4(0.08f, 0.55f, 0.12f, 0.85f);
 }
 
 CGridRenderer::~CGridRenderer()
@@ -138,11 +146,17 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniform1f("uMajorThickness", m_sStyle.fMajorThickness);
     shaderProgram.SetUniform1f("uAxisThickness", m_sStyle.fAxisThickness);
 
-    shaderProgram.SetUniformVec4f("uPlaneColor", m_sStyle.vPlaneColor);
-    shaderProgram.SetUniformVec4f("uMinorColor", m_sStyle.vMinorColor);
-    shaderProgram.SetUniformVec4f("uMajorColor", m_sStyle.vMajorColor);
-    shaderProgram.SetUniformVec4f("uXAxisColor", m_sStyle.vXAxisColor);
-    shaderProgram.SetUniformVec4f("uYAxisColor", m_sStyle.vYAxisColor);
+    shaderProgram.SetUniformVec4f("uPlaneColorTop", m_sStyle.vPlaneColorTop);
+    shaderProgram.SetUniformVec4f("uMinorColorTop", m_sStyle.vMinorColorTop);
+    shaderProgram.SetUniformVec4f("uMajorColorTop", m_sStyle.vMajorColorTop);
+    shaderProgram.SetUniformVec4f("uXAxisColorTop", m_sStyle.vXAxisColorTop);
+    shaderProgram.SetUniformVec4f("uYAxisColorTop", m_sStyle.vYAxisColorTop);
+
+    shaderProgram.SetUniformVec4f("uPlaneColorBottom", m_sStyle.vPlaneColorBottom);
+    shaderProgram.SetUniformVec4f("uMinorColorBottom", m_sStyle.vMinorColorBottom);
+    shaderProgram.SetUniformVec4f("uMajorColorBottom", m_sStyle.vMajorColorBottom);
+    shaderProgram.SetUniformVec4f("uXAxisColorBottom", m_sStyle.vXAxisColorBottom);
+    shaderProgram.SetUniformVec4f("uYAxisColorBottom", m_sStyle.vYAxisColorBottom);
 
     glBindVertexArray(m_nFullscreenVao);
 

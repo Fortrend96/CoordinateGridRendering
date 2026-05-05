@@ -36,11 +36,17 @@ struct SGridStyle
     bool bDrawDots;
     float fDotRadius;
 
-    glm::vec4 vPlaneColor;
-    glm::vec4 vMinorColor;
-    glm::vec4 vMajorColor;
-    glm::vec4 vXAxisColor;
-    glm::vec4 vYAxisColor;
+    glm::vec4 vPlaneColorTop;
+    glm::vec4 vMinorColorTop;
+    glm::vec4 vMajorColorTop;
+    glm::vec4 vXAxisColorTop;
+    glm::vec4 vYAxisColorTop;
+
+    glm::vec4 vPlaneColorBottom;
+    glm::vec4 vMinorColorBottom;
+    glm::vec4 vMajorColorBottom;
+    glm::vec4 vXAxisColorBottom;
+    glm::vec4 vYAxisColorBottom;
 };
 
 // ƒанные кадра, которые нужны сетке дл€ рендера.

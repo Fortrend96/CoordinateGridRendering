@@ -172,6 +172,7 @@ static void PrintControls()
     std::cout << "  Left mouse button + move : rotate camera\n";
     std::cout << "  Mouse wheel              : zoom\n";
     std::cout << "  R                        : reset camera\n";
+    std::cout << "  P                        : toggle perspective/orthographic projection\n";
     std::cout << "  B                        : toggle infinite/bounded grid\n";
     std::cout << "  M                        : toggle lines/dots mode\n";
     std::cout << "  1                        : simple grid\n";
@@ -261,6 +262,7 @@ int main()
     gridRenderer.Initialize();
 
     SGridStyle sGridStyle = gridRenderer.GetStyle();
+    gridRenderer.SetStyle(sGridStyle);
 
     // Сетка пишет gl_FragDepth, поэтому включаем depth test.
     glEnable(GL_DEPTH_TEST);
@@ -285,6 +287,12 @@ int main()
     glfwSetCursorPosCallback(pWindow, CursorPositionCallback);
     glfwSetScrollCallback(pWindow, ScrollCallback);
 
+    bool bUseOrthographicProjection = false;
+
+    bool bWasPPressed = false;
+    bool bWasBPressed = false;
+    bool bWasMPressed = false;
+
     auto fnSetPreset = [&](EGridPreset eNewPreset)
         {
             if (eCurrentPreset == eNewPreset)
@@ -302,9 +310,9 @@ int main()
         };
 
     std::cout << "Grid preset: " << GetGridPresetName(eCurrentPreset) << '\n';
-
-    bool bWasBPressed = false;
-    bool bWasMPressed = false;
+    std::cout << "Projection: perspective\n";
+    std::cout << "Grid bounds: " << (sGridStyle.bIsBounded ? "bounded" : "infinite") << '\n';
+    std::cout << "Grid mode: " << (sGridStyle.bDrawDots ? "dots" : "lines") << '\n';
 
     while (!glfwWindowShouldClose(pWindow))
     {
@@ -342,6 +350,24 @@ int main()
             );
         }
 
+        // Переключение перспективной/ортографической проекции.
+        //
+        // Проверяем "нажатие", а не "удержание", чтобы режим не переключался
+        // каждый кадр, пока клавиша P зажата.
+        const bool bIsPPressed = glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS;
+
+        if (bIsPPressed && !bWasPPressed)
+        {
+            bUseOrthographicProjection = !bUseOrthographicProjection;
+
+            std::cout << "Projection: "
+                << (bUseOrthographicProjection ? "orthographic" : "perspective")
+                << '\n';
+        }
+
+        bWasPPressed = bIsPPressed;
+
+        // Переключение infinite/bounded grid.
         const bool bIsBPressed = glfwGetKey(pWindow, GLFW_KEY_B) == GLFW_PRESS;
 
         if (bIsBPressed && !bWasBPressed)
@@ -356,6 +382,7 @@ int main()
 
         bWasBPressed = bIsBPressed;
 
+        // Переключение режима lines/dots.
         const bool bIsMPressed = glfwGetKey(pWindow, GLFW_KEY_M) == GLFW_PRESS;
 
         if (bIsMPressed && !bWasMPressed)
@@ -387,12 +414,35 @@ int main()
             ? static_cast<double>(nFramebufferWidth) / static_cast<double>(nFramebufferHeight)
             : 1.0;
 
-        const glm::dmat4 mProjection = glm::perspective(
-            glm::radians(60.0),
-            dAspect,
-            0.1,
-            1000.0
-        );
+        glm::dmat4 mProjection(1.0);
+
+        if (bUseOrthographicProjection)
+        {
+            // Тестовый ортографический режим.
+            //
+            // Размер подобран так, чтобы сетка была видна примерно
+            // в том же масштабе, что и в перспективе.
+            const double dHalfHeight = 18.0;
+            const double dHalfWidth = dHalfHeight * dAspect;
+
+            mProjection = glm::ortho(
+                -dHalfWidth,
+                dHalfWidth,
+                -dHalfHeight,
+                dHalfHeight,
+                0.1,
+                1000.0
+            );
+        }
+        else
+        {
+            mProjection = glm::perspective(
+                glm::radians(60.0),
+                dAspect,
+                0.1,
+                1000.0
+            );
+        }
 
         // OpenGL convention:
         //
