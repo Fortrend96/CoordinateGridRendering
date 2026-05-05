@@ -165,6 +165,35 @@ void main()
     float fx = max(fwidth(fgx), 1e-6);
     float fy = max(fwidth(fgy), 1e-6);
 
+    // -------------------------------------------------------------------------
+    // LOD / fade плотной сетки
+    // -------------------------------------------------------------------------
+    //
+    // При сильном отдалении малый шаг сетки может стать меньше пикселя.
+    // Тогда линии начинают сливаться и появляется муар / "серая каша".
+    //
+    // fx/fy показывают, сколько grid units приходится примерно на один пиксель.
+    // Значит:
+    //
+    //     step / fwidth
+    //
+    // даёт примерный размер шага в пикселях.
+    //
+    // Если шаг занимает слишком мало пикселей, плавно гасим соответствующий слой.
+    float minorStepPixelsX = float(uMinorStep) / fx;
+    float minorStepPixelsY = float(uMinorStep) / fy;
+
+    float majorStepPixelsX = float(uMajorStep) / fx;
+    float majorStepPixelsY = float(uMajorStep) / fy;
+
+    float minorStepPixels = min(minorStepPixelsX, minorStepPixelsY);
+    float majorStepPixels = min(majorStepPixelsX, majorStepPixelsY);
+
+    // Меньше 3 пикселей между линиями — почти не рисуем.
+    // Больше 8 пикселей — рисуем полностью.
+    float minorLodFade = smoothstep(3.0, 8.0, minorStepPixels);
+    float majorLodFade = smoothstep(3.0, 8.0, majorStepPixels);
+
     float minorMask = 0.0;
     float majorMask = 0.0;
     float xAxisMask = 0.0;
@@ -212,6 +241,12 @@ void main()
         xAxisMask = CreateLineMask(abs(gy), fy, uAxisThickness);
         yAxisMask = CreateLineMask(abs(gx), fx, uAxisThickness);
     }
+
+    // Гасим слишком плотные слои сетки вдали.
+    //
+    // Оси не гасим: они должны оставаться видны даже при сильном отдалении.
+    minorMask *= minorLodFade;
+    majorMask *= majorLodFade;
 
     // denom < 0 означает, что луч смотрит на сторону нормали.
     bool isTopSide = denom < 0.0;
