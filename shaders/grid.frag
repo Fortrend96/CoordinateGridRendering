@@ -14,6 +14,8 @@ uniform dvec3 uGridNormal;
 
 uniform double uMinViewNormalDot;
 
+uniform bool uClampDepth;
+
 uniform bool uIsBounded;
 uniform dvec4 uGridBounds; // minX, minY, maxX, maxY
 
@@ -65,6 +67,9 @@ float CreateDotMask(
 )
 {
     // Переводим расстояние до узла в условные экранные единицы.
+    //
+    // Если dx примерно равен fx, значит по X точка удалена примерно на 1 пиксель.
+    // То же самое для dy / fy.
     vec2 d = vec2(
         float(dx) / fx,
         float(dy) / fy
@@ -81,13 +86,17 @@ void main()
 {
     vec2 fragCoord = gl_FragCoord.xy;
 
-    // Координата пикселя в OpenGL NDC.
+    // OpenGL NDC:
+    // x = -1 слева, +1 справа
+    // y = -1 снизу, +1 сверху
     vec2 ndc = vec2(
         fragCoord.x / float(uViewportSize.x) * 2.0 - 1.0,
         fragCoord.y / float(uViewportSize.y) * 2.0 - 1.0
     );
 
-    // OpenGL: near plane = -1, far plane = +1.
+    // OpenGL convention:
+    // near plane = -1
+    // far plane  =  1
     dvec4 nearClip = dvec4(ndc, -1.0, 1.0);
     dvec4 farClip  = dvec4(ndc,  1.0, 1.0);
 
@@ -100,10 +109,11 @@ void main()
     dvec3 rayOrigin = nearWorld.xyz;
     dvec3 rayDir = normalize(farWorld.xyz - nearWorld.xyz);
 
+    // Пересечение луча с плоскостью сетки.
     double denom = dot(rayDir, uGridNormal);
 
-    // Если смотрим почти вдоль плоскости, сетку не рисуем:
-    // в этом положении она визуально становится нестабильной.
+    // Если смотрим почти вдоль плоскости, сетку не рисуем.
+    // Это защищает от визуального шума при взгляде "с ребра".
     if (abs(denom) < uMinViewNormalDot)
     {
         discard;
@@ -118,6 +128,10 @@ void main()
 
     dvec3 worldPos = rayOrigin + rayDir * t;
 
+    // Переход в локальную систему координат сетки.
+    //
+    // Важно, что worldPos и uGridOrigin — double.
+    // Это уменьшает потери точности при больших мировых координатах.
     dvec3 local = worldPos - uGridOrigin;
 
     double gx = dot(local, uGridAxisX);
@@ -146,6 +160,8 @@ void main()
     float fgx = float(gx);
     float fgy = float(gy);
 
+    // fwidth показывает изменение величины между соседними пикселями.
+    // Через него делаем линии более стабильными на экране.
     float fx = max(fwidth(fgx), 1e-6);
     float fy = max(fwidth(fgy), 1e-6);
 
@@ -173,12 +189,18 @@ void main()
             uDotRadius * 1.35
         );
 
-        // Оси оставляем линиями, чтобы направление X/Y было хорошо видно.
-        xAxisMask = CreateLineMask(abs(gy), fx, uAxisThickness);
-        yAxisMask = CreateLineMask(abs(gx), fy, uAxisThickness);
+        // Оси оставляем линиями даже в режиме точек,
+        // чтобы направление X/Y было хорошо видно.
+        //
+        // Важно:
+        // - для abs(gy) используем fy;
+        // - для abs(gx) используем fx.
+        xAxisMask = CreateLineMask(abs(gy), fy, uAxisThickness);
+        yAxisMask = CreateLineMask(abs(gx), fx, uAxisThickness);
     }
     else
     {
+        // Режим линий.
         float minorX = CreateLineMask(dxMinor, fx, uMinorThickness);
         float minorY = CreateLineMask(dyMinor, fy, uMinorThickness);
         minorMask = max(minorX, minorY);
@@ -200,6 +222,8 @@ void main()
     vec4 xAxisColor = isTopSide ? uXAxisColorTop : uXAxisColorBottom;
     vec4 yAxisColor = isTopSide ? uYAxisColorTop : uYAxisColorBottom;
 
+    // Приоритет:
+    // плоскость -> малые линии/точки -> большие линии/точки -> ось X -> ось Y.
     vec4 color = planeColor;
 
     color = mix(color, minorColor, minorMask);
@@ -212,6 +236,7 @@ void main()
         discard;
     }
 
+    // Настоящая глубина точки сетки.
     dvec4 clip = uViewProj * dvec4(worldPos, 1.0);
     double ndcZ = clip.z / clip.w;
 
@@ -219,9 +244,22 @@ void main()
     // Depth buffer: [0, 1]
     double depth = ndcZ * 0.5 + 0.5;
 
-    // По заданию: если глубина выходит за область отсечения,
-    // не обязательно отбрасывать фрагмент — можно прижать её к границе.
-    depth = clamp(depth, 0.0, 1.0);
+    // Важный момент:
+    // безусловный clamp может создавать визуальные артефакты,
+    // потому что фрагменты за near/far всё равно начинают рисоваться.
+    //
+    // Поэтому clamp сделан отдельным режимом.
+    if (uClampDepth)
+    {
+        depth = clamp(depth, 0.0, 1.0);
+    }
+    else
+    {
+        if (depth < 0.0 || depth > 1.0)
+        {
+            discard;
+        }
+    }
 
     gl_FragDepth = float(depth);
     outColor = color;

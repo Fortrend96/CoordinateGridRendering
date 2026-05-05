@@ -30,6 +30,11 @@ struct SGridStyle
 
     double dMinViewNormalDot;
 
+    // ”правл€емый режим:
+    // false Ч фрагменты за near/far отбрасываютс€;
+    // true  Ч depth прижимаетс€ к [0; 1].
+    bool bClampDepth;
+
     bool bIsBounded;
     glm::dvec4 vBounds;
 

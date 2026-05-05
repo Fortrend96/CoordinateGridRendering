@@ -21,20 +21,25 @@ CGridRenderer::CGridRenderer()
     // значит смотрим почти вдоль плоскости.
     m_sStyle.dMinViewNormalDot = 0.087;
 
+    // По умолчанию выключаем clamp depth.
+    // Это безопаснее визуально: фрагменты за near/far не "прилипают" к границе.
+    m_sStyle.bClampDepth = false;
+
     m_sStyle.bIsBounded = false;
     m_sStyle.vBounds = glm::dvec4(-25.0, -25.0, 25.0, 25.0);
 
     m_sStyle.bDrawDots = false;
     m_sStyle.fDotRadius = 2.0f;
 
+    // Верхняя сторона.
     m_sStyle.vPlaneColorTop = glm::vec4(0.03f, 0.03f, 0.035f, 0.35f);
     m_sStyle.vMinorColorTop = glm::vec4(0.32f, 0.32f, 0.34f, 0.55f);
     m_sStyle.vMajorColorTop = glm::vec4(0.58f, 0.58f, 0.62f, 0.75f);
     m_sStyle.vXAxisColorTop = glm::vec4(0.95f, 0.12f, 0.12f, 0.95f);
     m_sStyle.vYAxisColorTop = glm::vec4(0.15f, 0.85f, 0.20f, 0.95f);
 
-    // Для нижней стороны цвета можно сделать чуть темнее,
-    // чтобы сразу было видно, что используется второй набор.
+    // Нижняя сторона.
+    // Делаем чуть темнее, чтобы было видно переключение сторон.
     m_sStyle.vPlaneColorBottom = glm::vec4(0.025f, 0.025f, 0.03f, 0.30f);
     m_sStyle.vMinorColorBottom = glm::vec4(0.24f, 0.24f, 0.26f, 0.45f);
     m_sStyle.vMajorColorBottom = glm::vec4(0.42f, 0.42f, 0.46f, 0.65f);
@@ -130,28 +135,35 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniformVec3d("uGridAxisY", m_sGeometry.vAxisY);
     shaderProgram.SetUniformVec3d("uGridNormal", m_sGeometry.vNormal);
 
+    // Плохой угол обзора и режим глубины.
+    shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
+    shaderProgram.SetUniform1i("uClampDepth", m_sStyle.bClampDepth ? 1 : 0);
+
+    // Infinite / bounded.
     shaderProgram.SetUniform1i("uIsBounded", m_sStyle.bIsBounded ? 1 : 0);
     shaderProgram.SetUniformVec4d("uGridBounds", m_sStyle.vBounds);
 
+    // Lines / dots.
     shaderProgram.SetUniform1i("uDrawDots", m_sStyle.bDrawDots ? 1 : 0);
     shaderProgram.SetUniform1f("uDotRadius", m_sStyle.fDotRadius);
 
-    // Визуальные параметры.
-    shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
-
+    // Шаги.
     shaderProgram.SetUniform1d("uMinorStep", m_sStyle.dMinorStep);
     shaderProgram.SetUniform1d("uMajorStep", m_sStyle.dMajorStep);
 
+    // Толщины.
     shaderProgram.SetUniform1f("uMinorThickness", m_sStyle.fMinorThickness);
     shaderProgram.SetUniform1f("uMajorThickness", m_sStyle.fMajorThickness);
     shaderProgram.SetUniform1f("uAxisThickness", m_sStyle.fAxisThickness);
 
+    // Верхняя сторона.
     shaderProgram.SetUniformVec4f("uPlaneColorTop", m_sStyle.vPlaneColorTop);
     shaderProgram.SetUniformVec4f("uMinorColorTop", m_sStyle.vMinorColorTop);
     shaderProgram.SetUniformVec4f("uMajorColorTop", m_sStyle.vMajorColorTop);
     shaderProgram.SetUniformVec4f("uXAxisColorTop", m_sStyle.vXAxisColorTop);
     shaderProgram.SetUniformVec4f("uYAxisColorTop", m_sStyle.vYAxisColorTop);
 
+    // Нижняя сторона.
     shaderProgram.SetUniformVec4f("uPlaneColorBottom", m_sStyle.vPlaneColorBottom);
     shaderProgram.SetUniformVec4f("uMinorColorBottom", m_sStyle.vMinorColorBottom);
     shaderProgram.SetUniformVec4f("uMajorColorBottom", m_sStyle.vMajorColorBottom);

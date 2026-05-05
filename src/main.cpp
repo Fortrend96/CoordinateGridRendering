@@ -36,7 +36,7 @@ enum class EGridPreset
 // - к текущему режиму проекции.
 //
 // Это нужно для:
-// - pan/orbit/zoom;
+// - pan / orbit / zoom;
 // - reset камеры на текущую сетку;
 // - zoom в направлении курсора мыши.
 struct SApplicationState
@@ -452,6 +452,7 @@ static void PrintControls()
     std::cout << "  P                                  : toggle perspective/orthographic projection\n";
     std::cout << "  B                                  : toggle infinite/bounded grid\n";
     std::cout << "  M                                  : toggle lines/dots mode\n";
+    std::cout << "  C                                  : toggle depth clamp\n";
     std::cout << "  1                                  : simple grid\n";
     std::cout << "  2                                  : large offset grid\n";
     std::cout << "  3                                  : rotated grid\n";
@@ -581,6 +582,7 @@ int main()
     bool bWasPPressed = false;
     bool bWasBPressed = false;
     bool bWasMPressed = false;
+    bool bWasCPressed = false;
 
     auto fnSetPreset = [&](EGridPreset eNewPreset)
         {
@@ -602,6 +604,7 @@ int main()
     std::cout << "Projection: perspective\n";
     std::cout << "Grid bounds: " << (sGridStyle.bIsBounded ? "bounded" : "infinite") << '\n';
     std::cout << "Grid mode: " << (sGridStyle.bDrawDots ? "dots" : "lines") << '\n';
+    std::cout << "Depth clamp: " << (sGridStyle.bClampDepth ? "enabled" : "disabled") << '\n';
 
     while (!glfwWindowShouldClose(pWindow))
     {
@@ -640,9 +643,6 @@ int main()
         }
 
         // Переключение перспективной/ортографической проекции.
-        //
-        // Проверяем "нажатие", а не "удержание", чтобы режим не переключался
-        // каждый кадр, пока клавиша P зажата.
         const bool bIsPPressed = glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS;
 
         if (bIsPPressed && !bWasPPressed)
@@ -685,6 +685,21 @@ int main()
         }
 
         bWasMPressed = bIsMPressed;
+
+        // Переключение depth clamp.
+        const bool bIsCPressed = glfwGetKey(pWindow, GLFW_KEY_C) == GLFW_PRESS;
+
+        if (bIsCPressed && !bWasCPressed)
+        {
+            sGridStyle.bClampDepth = !sGridStyle.bClampDepth;
+            gridRenderer.SetStyle(sGridStyle);
+
+            std::cout << "Depth clamp: "
+                << (sGridStyle.bClampDepth ? "enabled" : "disabled")
+                << '\n';
+        }
+
+        bWasCPressed = bIsCPressed;
 
         int nFramebufferWidth = 0;
         int nFramebufferHeight = 0;
