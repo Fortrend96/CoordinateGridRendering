@@ -8,6 +8,7 @@
 #include "OrbitCamera.h"
 #include "ShaderProgram.h"
 
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -29,14 +30,21 @@ enum class EGridPreset
 
 // Состояние приложения, которое нужно callback-функциям GLFW.
 //
-// Раньше в glfwSetWindowUserPointer мы передавали только COrbitCamera*.
-// Теперь callback'ам нужен доступ и к камере, и к текущей сетке,
-// чтобы double click средней кнопкой мог сбрасывать камеру
-// на origin текущей сетки.
+// Callback'ам нужен доступ:
+// - к камере;
+// - к текущей геометрии сетки;
+// - к текущему режиму проекции.
+//
+// Это нужно для:
+// - pan/orbit/zoom;
+// - reset камеры на текущую сетку;
+// - zoom в направлении курсора мыши.
 struct SApplicationState
 {
     COrbitCamera* pCamera;
     SGridGeometry* pGridGeometry;
+
+    bool* pUseOrthographicProjection;
 
     double dDefaultCameraDistance;
     double dDefaultCameraYawRadians;
@@ -46,6 +54,140 @@ struct SApplicationState
 static void GlfwErrorCallback(int nErrorCode, const char* pszDescription)
 {
     std::cerr << "GLFW error " << nErrorCode << ": " << pszDescription << '\n';
+}
+
+static glm::dvec2 GetCursorNdc(GLFWwindow* pWindow)
+{
+    double dCursorX = 0.0;
+    double dCursorY = 0.0;
+
+    glfwGetCursorPos(pWindow, &dCursorX, &dCursorY);
+
+    int nWindowWidth = 0;
+    int nWindowHeight = 0;
+
+    glfwGetWindowSize(pWindow, &nWindowWidth, &nWindowHeight);
+
+    if (nWindowWidth <= 0 || nWindowHeight <= 0)
+    {
+        return glm::dvec2(0.0, 0.0);
+    }
+
+    // GLFW cursor coordinates:
+    // x — слева направо
+    // y — сверху вниз
+    //
+    // OpenGL NDC:
+    // x — слева направо [-1; 1]
+    // y — снизу вверх [-1; 1]
+    const double dNdcX =
+        dCursorX / static_cast<double>(nWindowWidth) * 2.0 - 1.0;
+
+    const double dNdcY =
+        1.0 - dCursorY / static_cast<double>(nWindowHeight) * 2.0;
+
+    return glm::dvec2(dNdcX, dNdcY);
+}
+
+static glm::dmat4 CreateProjectionMatrix(
+    bool bUseOrthographicProjection,
+    double dAspect
+)
+{
+    if (bUseOrthographicProjection)
+    {
+        // Тестовый ортографический режим.
+        //
+        // Размер подобран так, чтобы сетка была видна примерно
+        // в том же масштабе, что и в перспективе.
+        const double dHalfHeight = 18.0;
+        const double dHalfWidth = dHalfHeight * dAspect;
+
+        return glm::ortho(
+            -dHalfWidth,
+            dHalfWidth,
+            -dHalfHeight,
+            dHalfHeight,
+            0.1,
+            1000.0
+        );
+    }
+
+    return glm::perspective(
+        glm::radians(60.0),
+        dAspect,
+        0.1,
+        1000.0
+    );
+}
+
+static bool TryGetCursorGridPoint(
+    GLFWwindow* pWindow,
+    const COrbitCamera& camera,
+    const SGridGeometry& sGridGeometry,
+    bool bUseOrthographicProjection,
+    glm::dvec3& vResult
+)
+{
+    int nFramebufferWidth = 0;
+    int nFramebufferHeight = 0;
+
+    glfwGetFramebufferSize(pWindow, &nFramebufferWidth, &nFramebufferHeight);
+
+    const double dAspect =
+        nFramebufferHeight > 0
+        ? static_cast<double>(nFramebufferWidth) / static_cast<double>(nFramebufferHeight)
+        : 1.0;
+
+    const glm::dmat4 mView = camera.GetViewMatrix();
+
+    const glm::dmat4 mProjection = CreateProjectionMatrix(
+        bUseOrthographicProjection,
+        dAspect
+    );
+
+    const glm::dmat4 mViewProj = mProjection * mView;
+    const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
+
+    const glm::dvec2 vNdc = GetCursorNdc(pWindow);
+
+    // OpenGL NDC:
+    // near plane = -1
+    // far plane  =  1
+    const glm::dvec4 vNearClip(vNdc.x, vNdc.y, -1.0, 1.0);
+    const glm::dvec4 vFarClip(vNdc.x, vNdc.y, 1.0, 1.0);
+
+    glm::dvec4 vNearWorld = mInvViewProj * vNearClip;
+    glm::dvec4 vFarWorld = mInvViewProj * vFarClip;
+
+    vNearWorld /= vNearWorld.w;
+    vFarWorld /= vFarWorld.w;
+
+    const glm::dvec3 vRayOrigin = glm::dvec3(vNearWorld);
+    const glm::dvec3 vRayDirection = glm::normalize(
+        glm::dvec3(vFarWorld - vNearWorld)
+    );
+
+    const double dDenom = glm::dot(vRayDirection, sGridGeometry.vNormal);
+
+    if (std::abs(dDenom) < 1e-12)
+    {
+        return false;
+    }
+
+    const double dT = glm::dot(
+        sGridGeometry.vOrigin - vRayOrigin,
+        sGridGeometry.vNormal
+    ) / dDenom;
+
+    if (dT < 0.0)
+    {
+        return false;
+    }
+
+    vResult = vRayOrigin + vRayDirection * dT;
+
+    return true;
 }
 
 static void MouseButtonCallback(GLFWwindow* pWindow, int nButton, int nAction, int nMods)
@@ -163,13 +305,60 @@ static void ScrollCallback(GLFWwindow* pWindow, double dOffsetX, double dOffsetY
     SApplicationState* pApplicationState =
         static_cast<SApplicationState*>(glfwGetWindowUserPointer(pWindow));
 
-    if (pApplicationState == nullptr || pApplicationState->pCamera == nullptr)
+    if (
+        pApplicationState == nullptr ||
+        pApplicationState->pCamera == nullptr ||
+        pApplicationState->pGridGeometry == nullptr ||
+        pApplicationState->pUseOrthographicProjection == nullptr
+        )
     {
         return;
     }
 
-    // AutoCAD-like: mouse wheel -> zoom.
-    pApplicationState->pCamera->AddZoom(dOffsetY);
+    COrbitCamera* pCamera = pApplicationState->pCamera;
+    const SGridGeometry& sGridGeometry = *pApplicationState->pGridGeometry;
+    const bool bUseOrthographicProjection =
+        *pApplicationState->pUseOrthographicProjection;
+
+    glm::dvec3 vGridPointBeforeZoom(0.0);
+
+    const bool bHasPointBeforeZoom = TryGetCursorGridPoint(
+        pWindow,
+        *pCamera,
+        sGridGeometry,
+        bUseOrthographicProjection,
+        vGridPointBeforeZoom
+    );
+
+    // Сначала меняем расстояние камеры.
+    pCamera->AddZoom(dOffsetY);
+
+    if (!bHasPointBeforeZoom)
+    {
+        return;
+    }
+
+    glm::dvec3 vGridPointAfterZoom(0.0);
+
+    const bool bHasPointAfterZoom = TryGetCursorGridPoint(
+        pWindow,
+        *pCamera,
+        sGridGeometry,
+        bUseOrthographicProjection,
+        vGridPointAfterZoom
+    );
+
+    if (!bHasPointAfterZoom)
+    {
+        return;
+    }
+
+    // Сдвигаем target так, чтобы точка, которая была под курсором до зума,
+    // осталась под курсором после зума.
+    const glm::dvec3 vTargetCorrection =
+        vGridPointBeforeZoom - vGridPointAfterZoom;
+
+    pCamera->SetTarget(pCamera->GetTarget() + vTargetCorrection);
 }
 
 static glm::dmat4 CreateGridRotation(bool bRotated)
@@ -258,7 +447,7 @@ static void PrintControls()
     std::cout << "  Middle mouse double click          : reset camera to current grid\n";
     std::cout << "  Shift + middle mouse button + move : orbit\n";
     std::cout << "  Left mouse button + move           : orbit fallback\n";
-    std::cout << "  Mouse wheel                        : zoom\n";
+    std::cout << "  Mouse wheel                        : zoom to cursor\n";
     std::cout << "  R                                  : reset camera\n";
     std::cout << "  P                                  : toggle perspective/orthographic projection\n";
     std::cout << "  B                                  : toggle infinite/bounded grid\n";
@@ -374,9 +563,12 @@ int main()
         dDefaultCameraPitchRadians
     );
 
+    bool bUseOrthographicProjection = false;
+
     SApplicationState sApplicationState;
     sApplicationState.pCamera = &camera;
     sApplicationState.pGridGeometry = &sGridGeometry;
+    sApplicationState.pUseOrthographicProjection = &bUseOrthographicProjection;
     sApplicationState.dDefaultCameraDistance = dDefaultCameraDistance;
     sApplicationState.dDefaultCameraYawRadians = dDefaultCameraYawRadians;
     sApplicationState.dDefaultCameraPitchRadians = dDefaultCameraPitchRadians;
@@ -385,8 +577,6 @@ int main()
     glfwSetMouseButtonCallback(pWindow, MouseButtonCallback);
     glfwSetCursorPosCallback(pWindow, CursorPositionCallback);
     glfwSetScrollCallback(pWindow, ScrollCallback);
-
-    bool bUseOrthographicProjection = false;
 
     bool bWasPPressed = false;
     bool bWasBPressed = false;
@@ -513,35 +703,10 @@ int main()
             ? static_cast<double>(nFramebufferWidth) / static_cast<double>(nFramebufferHeight)
             : 1.0;
 
-        glm::dmat4 mProjection(1.0);
-
-        if (bUseOrthographicProjection)
-        {
-            // Тестовый ортографический режим.
-            //
-            // Размер подобран так, чтобы сетка была видна примерно
-            // в том же масштабе, что и в перспективе.
-            const double dHalfHeight = 18.0;
-            const double dHalfWidth = dHalfHeight * dAspect;
-
-            mProjection = glm::ortho(
-                -dHalfWidth,
-                dHalfWidth,
-                -dHalfHeight,
-                dHalfHeight,
-                0.1,
-                1000.0
-            );
-        }
-        else
-        {
-            mProjection = glm::perspective(
-                glm::radians(60.0),
-                dAspect,
-                0.1,
-                1000.0
-            );
-        }
+        const glm::dmat4 mProjection = CreateProjectionMatrix(
+            bUseOrthographicProjection,
+            dAspect
+        );
 
         // OpenGL convention:
         //
