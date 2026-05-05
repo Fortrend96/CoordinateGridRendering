@@ -8,7 +8,7 @@ COrbitCamera::COrbitCamera()
     , m_dDistance(20.0)
     , m_dYawRadians(glm::radians(-45.0))
     , m_dPitchRadians(glm::radians(30.0))
-    , m_bIsRotating(false)
+    , m_eDragMode(ECameraDragMode::None)
     , m_dLastMouseX(0.0)
     , m_dLastMouseY(0.0)
 {
@@ -24,7 +24,7 @@ COrbitCamera::COrbitCamera(
     , m_dDistance(dDistance)
     , m_dYawRadians(dYawRadians)
     , m_dPitchRadians(dPitchRadians)
-    , m_bIsRotating(false)
+    , m_eDragMode(ECameraDragMode::None)
     , m_dLastMouseX(0.0)
     , m_dLastMouseY(0.0)
 {
@@ -44,7 +44,7 @@ void COrbitCamera::Reset(
     m_dYawRadians = dYawRadians;
     m_dPitchRadians = dPitchRadians;
 
-    m_bIsRotating = false;
+    m_eDragMode = ECameraDragMode::None;
     m_dLastMouseX = 0.0;
     m_dLastMouseY = 0.0;
 
@@ -62,47 +62,75 @@ const glm::dvec3& COrbitCamera::GetTarget() const
     return m_vTarget;
 }
 
-glm::dvec3 COrbitCamera::GetPosition() const
+double COrbitCamera::GetDistance() const
 {
-    // —ферические координаты вокруг m_vTarget.
-    //
-    // m_dYawRadians   Ч поворот вокруг вертикальной оси Z.
-    // m_dPitchRadians Ч угол подъЄма камеры.
+    return m_dDistance;
+}
+
+glm::dvec3 COrbitCamera::GetForwardDirection() const
+{
+    // Ќаправление от target к камере.
     const double dCosPitch = std::cos(m_dPitchRadians);
     const double dSinPitch = std::sin(m_dPitchRadians);
 
     const double dCosYaw = std::cos(m_dYawRadians);
     const double dSinYaw = std::sin(m_dYawRadians);
 
-    const glm::dvec3 vDirection(
+    return glm::normalize(glm::dvec3(
         dCosPitch * dCosYaw,
         dCosPitch * dSinYaw,
         dSinPitch
-    );
+    ));
+}
 
-    return m_vTarget + vDirection * m_dDistance;
+glm::dvec3 COrbitCamera::GetPosition() const
+{
+    return m_vTarget + GetForwardDirection() * m_dDistance;
 }
 
 glm::dmat4 COrbitCamera::GetViewMatrix() const
 {
     const glm::dvec3 vCameraPosition = GetPosition();
+    const glm::dvec3 vWorldUp(0.0, 0.0, 1.0);
 
-    // ƒл€ CAD-подобного мира считаем, что Z Ч вертикальна€ ось.
-    const glm::dvec3 vUp(0.0, 0.0, 1.0);
-
-    return glm::lookAt(vCameraPosition, m_vTarget, vUp);
+    return glm::lookAt(vCameraPosition, m_vTarget, vWorldUp);
 }
 
-void COrbitCamera::BeginRotation(double dMouseX, double dMouseY)
+glm::dvec3 COrbitCamera::GetRightDirection() const
 {
-    m_bIsRotating = true;
+    const glm::dvec3 vWorldUp(0.0, 0.0, 1.0);
+
+    // View direction Ч от камеры к target.
+    const glm::dvec3 vViewDirection = glm::normalize(m_vTarget - GetPosition());
+
+    return glm::normalize(glm::cross(vViewDirection, vWorldUp));
+}
+
+glm::dvec3 COrbitCamera::GetUpDirection() const
+{
+    const glm::dvec3 vViewDirection = glm::normalize(m_vTarget - GetPosition());
+    const glm::dvec3 vRight = GetRightDirection();
+
+    return glm::normalize(glm::cross(vRight, vViewDirection));
+}
+
+void COrbitCamera::BeginOrbit(double dMouseX, double dMouseY)
+{
+    m_eDragMode = ECameraDragMode::Orbit;
     m_dLastMouseX = dMouseX;
     m_dLastMouseY = dMouseY;
 }
 
-void COrbitCamera::UpdateRotation(double dMouseX, double dMouseY)
+void COrbitCamera::BeginPan(double dMouseX, double dMouseY)
 {
-    if (!m_bIsRotating)
+    m_eDragMode = ECameraDragMode::Pan;
+    m_dLastMouseX = dMouseX;
+    m_dLastMouseY = dMouseY;
+}
+
+void COrbitCamera::UpdateDrag(double dMouseX, double dMouseY)
+{
+    if (m_eDragMode == ECameraDragMode::None)
     {
         return;
     }
@@ -113,27 +141,43 @@ void COrbitCamera::UpdateRotation(double dMouseX, double dMouseY)
     m_dLastMouseX = dMouseX;
     m_dLastMouseY = dMouseY;
 
-    // „увствительность вращени€ мышью.
-    const double dRotationSensitivity = 0.005;
+    if (m_eDragMode == ECameraDragMode::Orbit)
+    {
+        // CAD-like orbit: движение мыши по X вращает вокруг Z,
+        // движение по Y мен€ет pitch.
+        const double dRotationSensitivity = 0.005;
 
-    m_dYawRadians -= dDeltaX * dRotationSensitivity;
-    m_dPitchRadians += dDeltaY * dRotationSensitivity;
+        m_dYawRadians -= dDeltaX * dRotationSensitivity;
+        m_dPitchRadians += dDeltaY * dRotationSensitivity;
 
-    ClampPitch();
+        ClampPitch();
+    }
+    else if (m_eDragMode == ECameraDragMode::Pan)
+    {
+        // Pan двигает target в плоскости экрана.
+        //
+        // ћасштаб зависит от рассто€ни€ до цели:
+        // чем дальше камера, тем больше мировое смещение на один пиксель.
+        const double dPanSensitivity = 0.0015 * m_dDistance;
+
+        const glm::dvec3 vRight = GetRightDirection();
+        const glm::dvec3 vUp = GetUpDirection();
+
+        // «нак подобран так, чтобы движение мыши ощущалось как "перетаскивание чертежа".
+        m_vTarget -= vRight * dDeltaX * dPanSensitivity;
+        m_vTarget += vUp * dDeltaY * dPanSensitivity;
+    }
 }
 
-void COrbitCamera::EndRotation()
+void COrbitCamera::EndDrag()
 {
-    m_bIsRotating = false;
+    m_eDragMode = ECameraDragMode::None;
 }
 
 void COrbitCamera::AddZoom(double dScrollOffset)
 {
     // ѕоложительный scroll приближает камеру,
     // отрицательный Ч отдал€ет.
-    //
-    // ћультипликативный zoom обычно ощущаетс€ лучше,
-    // чем простое вычитание фиксированной величины.
     const double dZoomFactor = std::pow(0.90, dScrollOffset);
 
     m_dDistance *= dZoomFactor;
@@ -144,7 +188,7 @@ void COrbitCamera::AddZoom(double dScrollOffset)
 void COrbitCamera::ClampPitch()
 {
     // Ќе даЄм камере попасть ровно в вертикальное направление,
-    // чтобы glm::lookAt не получил вырожденный up-vector случай.
+    // чтобы glm::lookAt не получил вырожденный up-vector.
     const double dMaxPitch = glm::radians(89.0);
 
     m_dPitchRadians = std::clamp(

@@ -27,6 +27,22 @@ enum class EGridPreset
     LargeOffsetAndRotated = 4
 };
 
+// Состояние приложения, которое нужно callback-функциям GLFW.
+//
+// Раньше в glfwSetWindowUserPointer мы передавали только COrbitCamera*.
+// Теперь callback'ам нужен доступ и к камере, и к текущей сетке,
+// чтобы double click средней кнопкой мог сбрасывать камеру
+// на origin текущей сетки.
+struct SApplicationState
+{
+    COrbitCamera* pCamera;
+    SGridGeometry* pGridGeometry;
+
+    double dDefaultCameraDistance;
+    double dDefaultCameraYawRadians;
+    double dDefaultCameraPitchRadians;
+};
+
 static void GlfwErrorCallback(int nErrorCode, const char* pszDescription)
 {
     std::cerr << "GLFW error " << nErrorCode << ": " << pszDescription << '\n';
@@ -36,55 +52,124 @@ static void MouseButtonCallback(GLFWwindow* pWindow, int nButton, int nAction, i
 {
     (void)nMods;
 
-    COrbitCamera* pCamera = static_cast<COrbitCamera*>(glfwGetWindowUserPointer(pWindow));
+    SApplicationState* pApplicationState =
+        static_cast<SApplicationState*>(glfwGetWindowUserPointer(pWindow));
 
-    if (pCamera == nullptr)
+    if (pApplicationState == nullptr || pApplicationState->pCamera == nullptr)
     {
         return;
     }
 
-    if (nButton == GLFW_MOUSE_BUTTON_LEFT)
+    COrbitCamera* pCamera = pApplicationState->pCamera;
+
+    double dMouseX = 0.0;
+    double dMouseY = 0.0;
+
+    glfwGetCursorPos(pWindow, &dMouseX, &dMouseY);
+
+    if (nButton == GLFW_MOUSE_BUTTON_MIDDLE)
     {
-        double dMouseX = 0.0;
-        double dMouseY = 0.0;
-
-        glfwGetCursorPos(pWindow, &dMouseX, &dMouseY);
-
         if (nAction == GLFW_PRESS)
         {
-            pCamera->BeginRotation(dMouseX, dMouseY);
+            // Детектор двойного клика средней кнопкой.
+            //
+            // glfwGetTime() возвращает время в секундах с момента запуска GLFW.
+            // Если два нажатия произошли быстрее заданного интервала,
+            // считаем это double click.
+            static double s_dLastMiddleClickTime = -1.0;
+
+            const double dCurrentTime = glfwGetTime();
+            const double dDoubleClickInterval = 0.35;
+
+            const bool bIsDoubleClick =
+                s_dLastMiddleClickTime > 0.0 &&
+                (dCurrentTime - s_dLastMiddleClickTime) <= dDoubleClickInterval;
+
+            s_dLastMiddleClickTime = dCurrentTime;
+
+            if (bIsDoubleClick)
+            {
+                // Пока это не полноценный zoom extents.
+                // Но поведение близкое по смыслу: возвращаем камеру
+                // к текущей сетке и смотрим на её origin.
+                if (pApplicationState->pGridGeometry != nullptr)
+                {
+                    pCamera->Reset(
+                        pApplicationState->pGridGeometry->vOrigin,
+                        pApplicationState->dDefaultCameraDistance,
+                        pApplicationState->dDefaultCameraYawRadians,
+                        pApplicationState->dDefaultCameraPitchRadians
+                    );
+
+                    std::cout << "Camera reset by middle mouse double click\n";
+                }
+
+                return;
+            }
+
+            const bool bShiftPressed =
+                glfwGetKey(pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                glfwGetKey(pWindow, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+
+            if (bShiftPressed)
+            {
+                // AutoCAD-like: Shift + middle mouse drag -> orbit.
+                pCamera->BeginOrbit(dMouseX, dMouseY);
+            }
+            else
+            {
+                // AutoCAD-like: middle mouse drag -> pan.
+                pCamera->BeginPan(dMouseX, dMouseY);
+            }
         }
         else if (nAction == GLFW_RELEASE)
         {
-            pCamera->EndRotation();
+            pCamera->EndDrag();
+        }
+    }
+
+    // Дополнительно оставляем старое управление:
+    // ЛКМ + движение мыши тоже вращает камеру.
+    if (nButton == GLFW_MOUSE_BUTTON_LEFT)
+    {
+        if (nAction == GLFW_PRESS)
+        {
+            pCamera->BeginOrbit(dMouseX, dMouseY);
+        }
+        else if (nAction == GLFW_RELEASE)
+        {
+            pCamera->EndDrag();
         }
     }
 }
 
 static void CursorPositionCallback(GLFWwindow* pWindow, double dMouseX, double dMouseY)
 {
-    COrbitCamera* pCamera = static_cast<COrbitCamera*>(glfwGetWindowUserPointer(pWindow));
+    SApplicationState* pApplicationState =
+        static_cast<SApplicationState*>(glfwGetWindowUserPointer(pWindow));
 
-    if (pCamera == nullptr)
+    if (pApplicationState == nullptr || pApplicationState->pCamera == nullptr)
     {
         return;
     }
 
-    pCamera->UpdateRotation(dMouseX, dMouseY);
+    pApplicationState->pCamera->UpdateDrag(dMouseX, dMouseY);
 }
 
 static void ScrollCallback(GLFWwindow* pWindow, double dOffsetX, double dOffsetY)
 {
     (void)dOffsetX;
 
-    COrbitCamera* pCamera = static_cast<COrbitCamera*>(glfwGetWindowUserPointer(pWindow));
+    SApplicationState* pApplicationState =
+        static_cast<SApplicationState*>(glfwGetWindowUserPointer(pWindow));
 
-    if (pCamera == nullptr)
+    if (pApplicationState == nullptr || pApplicationState->pCamera == nullptr)
     {
         return;
     }
 
-    pCamera->AddZoom(dOffsetY);
+    // AutoCAD-like: mouse wheel -> zoom.
+    pApplicationState->pCamera->AddZoom(dOffsetY);
 }
 
 static glm::dmat4 CreateGridRotation(bool bRotated)
@@ -169,17 +254,20 @@ static void PrintControls()
 {
     std::cout << '\n';
     std::cout << "Controls:\n";
-    std::cout << "  Left mouse button + move : rotate camera\n";
-    std::cout << "  Mouse wheel              : zoom\n";
-    std::cout << "  R                        : reset camera\n";
-    std::cout << "  P                        : toggle perspective/orthographic projection\n";
-    std::cout << "  B                        : toggle infinite/bounded grid\n";
-    std::cout << "  M                        : toggle lines/dots mode\n";
-    std::cout << "  1                        : simple grid\n";
-    std::cout << "  2                        : large offset grid\n";
-    std::cout << "  3                        : rotated grid\n";
-    std::cout << "  4                        : large offset + rotated grid\n";
-    std::cout << "  Esc                      : exit\n";
+    std::cout << "  Middle mouse button + move         : pan\n";
+    std::cout << "  Middle mouse double click          : reset camera to current grid\n";
+    std::cout << "  Shift + middle mouse button + move : orbit\n";
+    std::cout << "  Left mouse button + move           : orbit fallback\n";
+    std::cout << "  Mouse wheel                        : zoom\n";
+    std::cout << "  R                                  : reset camera\n";
+    std::cout << "  P                                  : toggle perspective/orthographic projection\n";
+    std::cout << "  B                                  : toggle infinite/bounded grid\n";
+    std::cout << "  M                                  : toggle lines/dots mode\n";
+    std::cout << "  1                                  : simple grid\n";
+    std::cout << "  2                                  : large offset grid\n";
+    std::cout << "  3                                  : rotated grid\n";
+    std::cout << "  4                                  : large offset + rotated grid\n";
+    std::cout << "  Esc                                : exit\n";
     std::cout << '\n';
 }
 
@@ -275,14 +363,25 @@ int main()
     EGridPreset eCurrentPreset = EGridPreset::LargeOffsetAndRotated;
     SGridGeometry sGridGeometry = CreateGridGeometry(eCurrentPreset);
 
+    const double dDefaultCameraDistance = 24.0;
+    const double dDefaultCameraYawRadians = glm::radians(-45.0);
+    const double dDefaultCameraPitchRadians = glm::radians(30.0);
+
     COrbitCamera camera(
         sGridGeometry.vOrigin,
-        24.0,
-        glm::radians(-45.0),
-        glm::radians(30.0)
+        dDefaultCameraDistance,
+        dDefaultCameraYawRadians,
+        dDefaultCameraPitchRadians
     );
 
-    glfwSetWindowUserPointer(pWindow, &camera);
+    SApplicationState sApplicationState;
+    sApplicationState.pCamera = &camera;
+    sApplicationState.pGridGeometry = &sGridGeometry;
+    sApplicationState.dDefaultCameraDistance = dDefaultCameraDistance;
+    sApplicationState.dDefaultCameraYawRadians = dDefaultCameraYawRadians;
+    sApplicationState.dDefaultCameraPitchRadians = dDefaultCameraPitchRadians;
+
+    glfwSetWindowUserPointer(pWindow, &sApplicationState);
     glfwSetMouseButtonCallback(pWindow, MouseButtonCallback);
     glfwSetCursorPosCallback(pWindow, CursorPositionCallback);
     glfwSetScrollCallback(pWindow, ScrollCallback);
@@ -344,9 +443,9 @@ int main()
         {
             camera.Reset(
                 sGridGeometry.vOrigin,
-                24.0,
-                glm::radians(-45.0),
-                glm::radians(30.0)
+                dDefaultCameraDistance,
+                dDefaultCameraYawRadians,
+                dDefaultCameraPitchRadians
             );
         }
 

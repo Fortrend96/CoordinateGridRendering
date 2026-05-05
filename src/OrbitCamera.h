@@ -3,16 +3,26 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+enum class ECameraDragMode
+{
+    None,
+    Orbit,
+    Pan
+};
+
 // Орбитальная камера.
 //
 // Камера всегда смотрит на точку m_vTarget.
-// Положение камеры задаётся тремя параметрами:
-// - расстояние до цели;
-// - угол вокруг вертикальной оси;
-// - угол подъёма/наклона.
+// Положение камеры задаётся:
+// - точкой цели;
+// - расстоянием до цели;
+// - yaw;
+// - pitch.
 //
-// Это удобно для проверки сетки:
-// можно вращаться вокруг неё и смотреть, как она ведёт себя под разными углами.
+// Управление приближено к CAD-навигации:
+// - orbit вращает камеру вокруг target;
+// - pan сдвигает target в плоскости экрана;
+// - zoom меняет distance.
 class COrbitCamera
 {
 public:
@@ -35,16 +45,24 @@ public:
     void SetTarget(const glm::dvec3& vTarget);
     const glm::dvec3& GetTarget() const;
 
+    double GetDistance() const;
+
     glm::dvec3 GetPosition() const;
     glm::dmat4 GetViewMatrix() const;
 
-    void BeginRotation(double dMouseX, double dMouseY);
-    void UpdateRotation(double dMouseX, double dMouseY);
-    void EndRotation();
+    void BeginOrbit(double dMouseX, double dMouseY);
+    void BeginPan(double dMouseX, double dMouseY);
+
+    void UpdateDrag(double dMouseX, double dMouseY);
+    void EndDrag();
 
     void AddZoom(double dScrollOffset);
 
 private:
+    glm::dvec3 GetForwardDirection() const;
+    glm::dvec3 GetRightDirection() const;
+    glm::dvec3 GetUpDirection() const;
+
     void ClampPitch();
     void ClampDistance();
 
@@ -55,7 +73,7 @@ private:
     double m_dYawRadians;
     double m_dPitchRadians;
 
-    bool m_bIsRotating;
+    ECameraDragMode m_eDragMode;
 
     double m_dLastMouseX;
     double m_dLastMouseY;
