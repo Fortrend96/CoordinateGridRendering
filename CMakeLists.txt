@@ -17,6 +17,10 @@ add_subdirectory(external/glm)
 
 add_executable(${szProjectName}
     src/main.cpp
+
+    shaders/fullscreen_triangle.vert
+    shaders/fullscreen_triangle.frag
+    shaders/grid.frag
 )
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${szProjectName})
