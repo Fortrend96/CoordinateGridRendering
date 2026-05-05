@@ -6,6 +6,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "OrbitCamera.h"
+#include "ShaderProgram.h"
 
 #include <filesystem>
 #include <fstream>
@@ -37,102 +38,7 @@ struct SGridParameters
     glm::dvec3 vNormal;
 };
 
-static std::string ReadTextFile(const std::string& szFilePath)
-{
-    std::ifstream file(szFilePath);
 
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Failed to open file: " + szFilePath);
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-
-    return buffer.str();
-}
-
-static GLuint CompileShader(GLenum eShaderType, const std::string& szSource, const std::string& szDebugName)
-{
-    GLuint nShader = glCreateShader(eShaderType);
-
-    const char* pSource = szSource.c_str();
-    glShaderSource(nShader, 1, &pSource, nullptr);
-    glCompileShader(nShader);
-
-    GLint nSuccess = GL_FALSE;
-    glGetShaderiv(nShader, GL_COMPILE_STATUS, &nSuccess);
-
-    if (nSuccess != GL_TRUE)
-    {
-        GLint nLogLength = 0;
-        glGetShaderiv(nShader, GL_INFO_LOG_LENGTH, &nLogLength);
-
-        std::string szLog;
-        szLog.resize(static_cast<size_t>(nLogLength));
-
-        glGetShaderInfoLog(nShader, nLogLength, nullptr, szLog.data());
-
-        glDeleteShader(nShader);
-
-        throw std::runtime_error("Failed to compile shader: " + szDebugName + "\n" + szLog);
-    }
-
-    return nShader;
-}
-
-static GLuint CreateShaderProgram(const std::string& szVertexShaderPath, const std::string& szFragmentShaderPath)
-{
-    const std::string szVertexSource = ReadTextFile(szVertexShaderPath);
-    const std::string szFragmentSource = ReadTextFile(szFragmentShaderPath);
-
-    GLuint nVertexShader = CompileShader(GL_VERTEX_SHADER, szVertexSource, szVertexShaderPath);
-    GLuint nFragmentShader = CompileShader(GL_FRAGMENT_SHADER, szFragmentSource, szFragmentShaderPath);
-
-    GLuint nProgram = glCreateProgram();
-
-    glAttachShader(nProgram, nVertexShader);
-    glAttachShader(nProgram, nFragmentShader);
-    glLinkProgram(nProgram);
-
-    glDetachShader(nProgram, nVertexShader);
-    glDetachShader(nProgram, nFragmentShader);
-
-    glDeleteShader(nVertexShader);
-    glDeleteShader(nFragmentShader);
-
-    GLint nSuccess = GL_FALSE;
-    glGetProgramiv(nProgram, GL_LINK_STATUS, &nSuccess);
-
-    if (nSuccess != GL_TRUE)
-    {
-        GLint nLogLength = 0;
-        glGetProgramiv(nProgram, GL_INFO_LOG_LENGTH, &nLogLength);
-
-        std::string szLog;
-        szLog.resize(static_cast<size_t>(nLogLength));
-
-        glGetProgramInfoLog(nProgram, nLogLength, nullptr, szLog.data());
-
-        glDeleteProgram(nProgram);
-
-        throw std::runtime_error("Failed to link shader program\n" + szLog);
-    }
-
-    return nProgram;
-}
-
-static GLint GetUniformLocation(GLuint nProgram, const char* pszName)
-{
-    GLint nLocation = glGetUniformLocation(nProgram, pszName);
-
-    if (nLocation == -1)
-    {
-        std::cerr << "Warning: uniform not found: " << pszName << '\n';
-    }
-
-    return nLocation;
-}
 
 static void GlfwErrorCallback(int nErrorCode, const char* pszDescription)
 {
@@ -324,11 +230,11 @@ int main()
 
     PrintControls();
 
-    GLuint nGridProgram = 0;
+    CShaderProgram gridShaderProgram;
 
     try
     {
-        nGridProgram = CreateShaderProgram(
+        gridShaderProgram.LoadFromFiles(
             "shaders/fullscreen_triangle.vert",
             "shaders/grid.frag"
         );
@@ -446,110 +352,59 @@ int main()
         const glm::dmat4 mViewProj = mProjection * mView;
         const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
 
-        glUseProgram(nGridProgram);
+        gridShaderProgram.Use();
 
-        glUniformMatrix4dv(
-            GetUniformLocation(nGridProgram, "uViewProj"),
-            1,
-            GL_FALSE,
-            glm::value_ptr(mViewProj)
+        gridShaderProgram.SetUniformMat4d("uViewProj", mViewProj);
+        gridShaderProgram.SetUniformMat4d("uInvViewProj", mInvViewProj);
+
+        gridShaderProgram.SetUniformVec2d(
+            "uViewportSize",
+            glm::dvec2(
+                static_cast<double>(nFramebufferWidth),
+                static_cast<double>(nFramebufferHeight)
+            )
         );
 
-        glUniformMatrix4dv(
-            GetUniformLocation(nGridProgram, "uInvViewProj"),
-            1,
-            GL_FALSE,
-            glm::value_ptr(mInvViewProj)
-        );
-
-        glUniform2d(
-            GetUniformLocation(nGridProgram, "uViewportSize"),
-            static_cast<double>(nFramebufferWidth),
-            static_cast<double>(nFramebufferHeight)
-        );
-
-        glUniform3d(
-            GetUniformLocation(nGridProgram, "uGridOrigin"),
-            sGridParameters.vOrigin.x,
-            sGridParameters.vOrigin.y,
-            sGridParameters.vOrigin.z
-        );
-
-        glUniform3d(
-            GetUniformLocation(nGridProgram, "uGridAxisX"),
-            sGridParameters.vAxisX.x,
-            sGridParameters.vAxisX.y,
-            sGridParameters.vAxisX.z
-        );
-
-        glUniform3d(
-            GetUniformLocation(nGridProgram, "uGridAxisY"),
-            sGridParameters.vAxisY.x,
-            sGridParameters.vAxisY.y,
-            sGridParameters.vAxisY.z
-        );
-
-        glUniform3d(
-            GetUniformLocation(nGridProgram, "uGridNormal"),
-            sGridParameters.vNormal.x,
-            sGridParameters.vNormal.y,
-            sGridParameters.vNormal.z
-        );
+        gridShaderProgram.SetUniformVec3d("uGridOrigin", sGridParameters.vOrigin);
+        gridShaderProgram.SetUniformVec3d("uGridAxisX", sGridParameters.vAxisX);
+        gridShaderProgram.SetUniformVec3d("uGridAxisY", sGridParameters.vAxisY);
+        gridShaderProgram.SetUniformVec3d("uGridNormal", sGridParameters.vNormal);
 
         // sin(5∞) ~= 0.087.
-        //
         // ≈сли abs(dot(rayDir, normal)) меньше этого порога,
-        // значит смотрим на плоскость почти с ребра и сетку лучше не рисовать.
-        glUniform1d(
-            GetUniformLocation(nGridProgram, "uMinViewNormalDot"),
-            0.087
+        // значит смотрим на сетку почти с ребра.
+        gridShaderProgram.SetUniform1d("uMinViewNormalDot", 0.087);
+
+        gridShaderProgram.SetUniform1d("uMinorStep", 1.0);
+        gridShaderProgram.SetUniform1d("uMajorStep", 10.0);
+
+        gridShaderProgram.SetUniform1f("uMinorThickness", 1.0f);
+        gridShaderProgram.SetUniform1f("uMajorThickness", 1.5f);
+        gridShaderProgram.SetUniform1f("uAxisThickness", 2.5f);
+
+        gridShaderProgram.SetUniformVec4f(
+            "uPlaneColor",
+            glm::vec4(0.03f, 0.03f, 0.035f, 0.35f)
         );
 
-        glUniform1d(GetUniformLocation(nGridProgram, "uMinorStep"), 1.0);
-        glUniform1d(GetUniformLocation(nGridProgram, "uMajorStep"), 10.0);
-
-        glUniform1f(GetUniformLocation(nGridProgram, "uMinorThickness"), 1.0f);
-        glUniform1f(GetUniformLocation(nGridProgram, "uMajorThickness"), 1.5f);
-        glUniform1f(GetUniformLocation(nGridProgram, "uAxisThickness"), 2.5f);
-
-        glUniform4f(
-            GetUniformLocation(nGridProgram, "uPlaneColor"),
-            0.03f,
-            0.03f,
-            0.035f,
-            0.35f
+        gridShaderProgram.SetUniformVec4f(
+            "uMinorColor",
+            glm::vec4(0.32f, 0.32f, 0.34f, 0.55f)
         );
 
-        glUniform4f(
-            GetUniformLocation(nGridProgram, "uMinorColor"),
-            0.32f,
-            0.32f,
-            0.34f,
-            0.55f
+        gridShaderProgram.SetUniformVec4f(
+            "uMajorColor",
+            glm::vec4(0.58f, 0.58f, 0.62f, 0.75f)
         );
 
-        glUniform4f(
-            GetUniformLocation(nGridProgram, "uMajorColor"),
-            0.58f,
-            0.58f,
-            0.62f,
-            0.75f
+        gridShaderProgram.SetUniformVec4f(
+            "uXAxisColor",
+            glm::vec4(0.95f, 0.12f, 0.12f, 0.95f)
         );
 
-        glUniform4f(
-            GetUniformLocation(nGridProgram, "uXAxisColor"),
-            0.95f,
-            0.12f,
-            0.12f,
-            0.95f
-        );
-
-        glUniform4f(
-            GetUniformLocation(nGridProgram, "uYAxisColor"),
-            0.15f,
-            0.85f,
-            0.20f,
-            0.95f
+        gridShaderProgram.SetUniformVec4f(
+            "uYAxisColor",
+            glm::vec4(0.15f, 0.85f, 0.20f, 0.95f)
         );
 
         glBindVertexArray(nFullscreenVao);
@@ -559,7 +414,6 @@ int main()
     }
 
     glDeleteVertexArrays(1, &nFullscreenVao);
-    glDeleteProgram(nGridProgram);
 
     glfwDestroyWindow(pWindow);
     glfwTerminate();
