@@ -172,6 +172,8 @@ static void PrintControls()
     std::cout << "  Left mouse button + move : rotate camera\n";
     std::cout << "  Mouse wheel              : zoom\n";
     std::cout << "  R                        : reset camera\n";
+    std::cout << "  B                        : toggle infinite/bounded grid\n";
+    std::cout << "  M                        : toggle lines/dots mode\n";
     std::cout << "  1                        : simple grid\n";
     std::cout << "  2                        : large offset grid\n";
     std::cout << "  3                        : rotated grid\n";
@@ -258,6 +260,8 @@ int main()
     CGridRenderer gridRenderer;
     gridRenderer.Initialize();
 
+    SGridStyle sGridStyle = gridRenderer.GetStyle();
+
     // Сетка пишет gl_FragDepth, поэтому включаем depth test.
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -299,6 +303,9 @@ int main()
 
     std::cout << "Grid preset: " << GetGridPresetName(eCurrentPreset) << '\n';
 
+    bool bWasBPressed = false;
+    bool bWasMPressed = false;
+
     while (!glfwWindowShouldClose(pWindow))
     {
         glfwPollEvents();
@@ -334,6 +341,34 @@ int main()
                 glm::radians(30.0)
             );
         }
+
+        const bool bIsBPressed = glfwGetKey(pWindow, GLFW_KEY_B) == GLFW_PRESS;
+
+        if (bIsBPressed && !bWasBPressed)
+        {
+            sGridStyle.bIsBounded = !sGridStyle.bIsBounded;
+            gridRenderer.SetStyle(sGridStyle);
+
+            std::cout << "Grid bounds: "
+                << (sGridStyle.bIsBounded ? "bounded" : "infinite")
+                << '\n';
+        }
+
+        bWasBPressed = bIsBPressed;
+
+        const bool bIsMPressed = glfwGetKey(pWindow, GLFW_KEY_M) == GLFW_PRESS;
+
+        if (bIsMPressed && !bWasMPressed)
+        {
+            sGridStyle.bDrawDots = !sGridStyle.bDrawDots;
+            gridRenderer.SetStyle(sGridStyle);
+
+            std::cout << "Grid mode: "
+                << (sGridStyle.bDrawDots ? "dots" : "lines")
+                << '\n';
+        }
+
+        bWasMPressed = bIsMPressed;
 
         int nFramebufferWidth = 0;
         int nFramebufferHeight = 0;

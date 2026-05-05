@@ -109,6 +109,22 @@ void CShaderProgram::SetUniform1f(const char* pszName, float fValue) const
     glUniform1f(GetUniformLocation(pszName), fValue);
 }
 
+void CShaderProgram::SetUniformVec4d(const char* pszName, const glm::dvec4& vValue) const
+{
+    glUniform4d(
+        GetUniformLocation(pszName),
+        vValue.x,
+        vValue.y,
+        vValue.z,
+        vValue.w
+    );
+}
+
+void CShaderProgram::SetUniform1i(const char* pszName, int nValue) const
+{
+    glUniform1i(GetUniformLocation(pszName), nValue);
+}
+
 std::string CShaderProgram::ReadTextFile(const std::string& szFilePath)
 {
     std::ifstream file(szFilePath);

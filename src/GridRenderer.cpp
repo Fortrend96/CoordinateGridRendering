@@ -21,6 +21,12 @@ CGridRenderer::CGridRenderer()
     // значит смотрим почти вдоль плоскости.
     m_sStyle.dMinViewNormalDot = 0.087;
 
+    m_sStyle.bIsBounded = false;
+    m_sStyle.vBounds = glm::dvec4(-25.0, -25.0, 25.0, 25.0);
+
+    m_sStyle.bDrawDots = false;
+    m_sStyle.fDotRadius = 2.0f;
+
     m_sStyle.vPlaneColor = glm::vec4(0.03f, 0.03f, 0.035f, 0.35f);
     m_sStyle.vMinorColor = glm::vec4(0.32f, 0.32f, 0.34f, 0.55f);
     m_sStyle.vMajorColor = glm::vec4(0.58f, 0.58f, 0.62f, 0.75f);
@@ -115,6 +121,12 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniformVec3d("uGridAxisX", m_sGeometry.vAxisX);
     shaderProgram.SetUniformVec3d("uGridAxisY", m_sGeometry.vAxisY);
     shaderProgram.SetUniformVec3d("uGridNormal", m_sGeometry.vNormal);
+
+    shaderProgram.SetUniform1i("uIsBounded", m_sStyle.bIsBounded ? 1 : 0);
+    shaderProgram.SetUniformVec4d("uGridBounds", m_sStyle.vBounds);
+
+    shaderProgram.SetUniform1i("uDrawDots", m_sStyle.bDrawDots ? 1 : 0);
+    shaderProgram.SetUniform1f("uDotRadius", m_sStyle.fDotRadius);
 
     // Визуальные параметры.
     shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);

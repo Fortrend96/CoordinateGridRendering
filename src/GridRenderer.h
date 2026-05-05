@@ -30,6 +30,12 @@ struct SGridStyle
 
     double dMinViewNormalDot;
 
+    bool bIsBounded;
+    glm::dvec4 vBounds;
+
+    bool bDrawDots;
+    float fDotRadius;
+
     glm::vec4 vPlaneColor;
     glm::vec4 vMinorColor;
     glm::vec4 vMajorColor;

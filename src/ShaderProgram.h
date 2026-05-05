@@ -41,6 +41,9 @@ public:
     void SetUniform1d(const char* pszName, double dValue) const;
     void SetUniform1f(const char* pszName, float fValue) const;
 
+    void SetUniformVec4d(const char* pszName, const glm::dvec4& vValue) const;
+    void SetUniform1i(const char* pszName, int nValue) const;
+
 private:
     static std::string ReadTextFile(const std::string& szFilePath);
     static GLuint CompileShader(GLenum eShaderType, const std::string& szSource, const std::string& szDebugName);
