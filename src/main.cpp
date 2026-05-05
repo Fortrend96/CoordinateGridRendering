@@ -3,17 +3,14 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
+#include "GridRenderer.h"
 #include "OrbitCamera.h"
 #include "ShaderProgram.h"
 
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
-#include <string>
 
 // Ќабор тестовых режимов сетки.
 //
@@ -29,16 +26,6 @@ enum class EGridPreset
     Rotated = 3,
     LargeOffsetAndRotated = 4
 };
-
-struct SGridParameters
-{
-    glm::dvec3 vOrigin;
-    glm::dvec3 vAxisX;
-    glm::dvec3 vAxisY;
-    glm::dvec3 vNormal;
-};
-
-
 
 static void GlfwErrorCallback(int nErrorCode, const char* pszDescription)
 {
@@ -60,6 +47,7 @@ static void MouseButtonCallback(GLFWwindow* pWindow, int nButton, int nAction, i
     {
         double dMouseX = 0.0;
         double dMouseY = 0.0;
+
         glfwGetCursorPos(pWindow, &dMouseX, &dMouseY);
 
         if (nAction == GLFW_PRESS)
@@ -107,14 +95,16 @@ static glm::dmat4 CreateGridRotation(bool bRotated)
     }
 
     // “естовый произвольный поворот.
-    // ќн нужен, чтобы проверить, что сетка работает не только в плоскости Z = 0.
+    //
+    // ќн нужен, чтобы проверить, что сетка работает не только
+    // в простой плоскости Z = 0.
     return
         glm::rotate(glm::dmat4(1.0), glm::radians(25.0), glm::dvec3(1.0, 0.0, 0.0)) *
         glm::rotate(glm::dmat4(1.0), glm::radians(15.0), glm::dvec3(0.0, 1.0, 0.0)) *
         glm::rotate(glm::dmat4(1.0), glm::radians(10.0), glm::dvec3(0.0, 0.0, 1.0));
 }
 
-static SGridParameters CreateGridParameters(EGridPreset ePreset)
+static SGridGeometry CreateGridGeometry(EGridPreset ePreset)
 {
     const bool bLargeOffset =
         ePreset == EGridPreset::LargeOffset ||
@@ -130,23 +120,28 @@ static SGridParameters CreateGridParameters(EGridPreset ePreset)
 
     const glm::dmat4 mGridRotation = CreateGridRotation(bRotated);
 
+    // Ћокальна€ ось X сетки после поворота.
     const glm::dvec3 vAxisX = glm::normalize(
         glm::dvec3(mGridRotation * glm::dvec4(1.0, 0.0, 0.0, 0.0))
     );
 
+    // Ћокальна€ ось Y сетки после поворота.
     const glm::dvec3 vAxisY = glm::normalize(
         glm::dvec3(mGridRotation * glm::dvec4(0.0, 1.0, 0.0, 0.0))
     );
 
+    // Ќормаль к плоскости сетки.
+    //
+    // ѕока считаем, что оси X и Y ортонормированы.
     const glm::dvec3 vNormal = glm::normalize(glm::cross(vAxisX, vAxisY));
 
-    return SGridParameters
-    {
-        vOrigin,
-        vAxisX,
-        vAxisY,
-        vNormal
-    };
+    SGridGeometry sGeometry;
+    sGeometry.vOrigin = vOrigin;
+    sGeometry.vAxisX = vAxisX;
+    sGeometry.vAxisY = vAxisY;
+    sGeometry.vNormal = vNormal;
+
+    return sGeometry;
 }
 
 static const char* GetGridPresetName(EGridPreset ePreset)
@@ -155,12 +150,16 @@ static const char* GetGridPresetName(EGridPreset ePreset)
     {
     case EGridPreset::Simple:
         return "Simple";
+
     case EGridPreset::LargeOffset:
         return "Large offset";
+
     case EGridPreset::Rotated:
         return "Rotated";
+
     case EGridPreset::LargeOffsetAndRotated:
         return "Large offset + rotated";
+
     default:
         return "Unknown";
     }
@@ -191,6 +190,7 @@ int main()
         return 1;
     }
 
+    // ѕросим OpenGL 4.3 Core Profile.
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -209,18 +209,24 @@ int main()
     if (pWindow == nullptr)
     {
         std::cerr << "Failed to create GLFW window\n";
+
         glfwTerminate();
         return 1;
     }
 
     glfwMakeContextCurrent(pWindow);
+
+    // ¬ертикальна€ синхронизаци€.
     glfwSwapInterval(1);
 
+    // GLAD нужно инициализировать только после создани€ OpenGL-контекста.
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
     {
         std::cerr << "Failed to initialize GLAD\n";
+
         glfwDestroyWindow(pWindow);
         glfwTerminate();
+
         return 1;
     }
 
@@ -249,20 +255,22 @@ int main()
         return 1;
     }
 
-    GLuint nFullscreenVao = 0;
-    glGenVertexArrays(1, &nFullscreenVao);
+    CGridRenderer gridRenderer;
+    gridRenderer.Initialize();
 
+    // —етка пишет gl_FragDepth, поэтому включаем depth test.
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
+    // ¬ключаем alpha blending дл€ полупрозрачной сетки и плоскости.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     EGridPreset eCurrentPreset = EGridPreset::LargeOffsetAndRotated;
-    SGridParameters sGridParameters = CreateGridParameters(eCurrentPreset);
+    SGridGeometry sGridGeometry = CreateGridGeometry(eCurrentPreset);
 
     COrbitCamera camera(
-        sGridParameters.vOrigin,
+        sGridGeometry.vOrigin,
         24.0,
         glm::radians(-45.0),
         glm::radians(30.0)
@@ -281,9 +289,10 @@ int main()
             }
 
             eCurrentPreset = eNewPreset;
-            sGridParameters = CreateGridParameters(eCurrentPreset);
+            sGridGeometry = CreateGridGeometry(eCurrentPreset);
 
-            camera.SetTarget(sGridParameters.vOrigin);
+            // ѕри переключении режима переносим цель камеры в origin новой сетки.
+            camera.SetTarget(sGridGeometry.vOrigin);
 
             std::cout << "Grid preset: " << GetGridPresetName(eCurrentPreset) << '\n';
         };
@@ -319,7 +328,7 @@ int main()
         if (glfwGetKey(pWindow, GLFW_KEY_R) == GLFW_PRESS)
         {
             camera.Reset(
-                sGridParameters.vOrigin,
+                sGridGeometry.vOrigin,
                 24.0,
                 glm::radians(-45.0),
                 glm::radians(30.0)
@@ -328,6 +337,7 @@ int main()
 
         int nFramebufferWidth = 0;
         int nFramebufferHeight = 0;
+
         glfwGetFramebufferSize(pWindow, &nFramebufferWidth, &nFramebufferHeight);
 
         glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
@@ -349,71 +359,29 @@ int main()
             1000.0
         );
 
+        // OpenGL convention:
+        //
+        // clip = projection * view * worldPosition
         const glm::dmat4 mViewProj = mProjection * mView;
         const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
 
-        gridShaderProgram.Use();
-
-        gridShaderProgram.SetUniformMat4d("uViewProj", mViewProj);
-        gridShaderProgram.SetUniformMat4d("uInvViewProj", mInvViewProj);
-
-        gridShaderProgram.SetUniformVec2d(
-            "uViewportSize",
-            glm::dvec2(
-                static_cast<double>(nFramebufferWidth),
-                static_cast<double>(nFramebufferHeight)
-            )
+        SGridFrameData sFrameData;
+        sFrameData.mViewProj = mViewProj;
+        sFrameData.mInvViewProj = mInvViewProj;
+        sFrameData.vViewportSize = glm::dvec2(
+            static_cast<double>(nFramebufferWidth),
+            static_cast<double>(nFramebufferHeight)
         );
 
-        gridShaderProgram.SetUniformVec3d("uGridOrigin", sGridParameters.vOrigin);
-        gridShaderProgram.SetUniformVec3d("uGridAxisX", sGridParameters.vAxisX);
-        gridShaderProgram.SetUniformVec3d("uGridAxisY", sGridParameters.vAxisY);
-        gridShaderProgram.SetUniformVec3d("uGridNormal", sGridParameters.vNormal);
-
-        // sin(5∞) ~= 0.087.
-        // ≈сли abs(dot(rayDir, normal)) меньше этого порога,
-        // значит смотрим на сетку почти с ребра.
-        gridShaderProgram.SetUniform1d("uMinViewNormalDot", 0.087);
-
-        gridShaderProgram.SetUniform1d("uMinorStep", 1.0);
-        gridShaderProgram.SetUniform1d("uMajorStep", 10.0);
-
-        gridShaderProgram.SetUniform1f("uMinorThickness", 1.0f);
-        gridShaderProgram.SetUniform1f("uMajorThickness", 1.5f);
-        gridShaderProgram.SetUniform1f("uAxisThickness", 2.5f);
-
-        gridShaderProgram.SetUniformVec4f(
-            "uPlaneColor",
-            glm::vec4(0.03f, 0.03f, 0.035f, 0.35f)
-        );
-
-        gridShaderProgram.SetUniformVec4f(
-            "uMinorColor",
-            glm::vec4(0.32f, 0.32f, 0.34f, 0.55f)
-        );
-
-        gridShaderProgram.SetUniformVec4f(
-            "uMajorColor",
-            glm::vec4(0.58f, 0.58f, 0.62f, 0.75f)
-        );
-
-        gridShaderProgram.SetUniformVec4f(
-            "uXAxisColor",
-            glm::vec4(0.95f, 0.12f, 0.12f, 0.95f)
-        );
-
-        gridShaderProgram.SetUniformVec4f(
-            "uYAxisColor",
-            glm::vec4(0.15f, 0.85f, 0.20f, 0.95f)
-        );
-
-        glBindVertexArray(nFullscreenVao);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        gridRenderer.SetGeometry(sGridGeometry);
+        gridRenderer.Render(gridShaderProgram, sFrameData);
 
         glfwSwapBuffers(pWindow);
     }
 
-    glDeleteVertexArrays(1, &nFullscreenVao);
+    // CGridRenderer сам удалит VAO в деструкторе,
+    // но €вный Destroy делает пор€док освобождени€ ресурсов очевидным.
+    gridRenderer.Destroy();
 
     glfwDestroyWindow(pWindow);
     glfwTerminate();

@@ -17,10 +17,15 @@ add_subdirectory(external/glm)
 
 source_group("Source Files" FILES
     src/main.cpp
+
     src/OrbitCamera.h
     src/OrbitCamera.cpp
+
     src/ShaderProgram.h
     src/ShaderProgram.cpp
+
+    src/GridRenderer.h
+    src/GridRenderer.cpp
 )
 
 source_group("Shaders" FILES
@@ -42,6 +47,9 @@ add_executable(${szProjectName}
 
     src/ShaderProgram.h
     src/ShaderProgram.cpp
+
+    src/GridRenderer.h
+    src/GridRenderer.cpp
 
     shaders/fullscreen_triangle.vert
     shaders/grid.frag
