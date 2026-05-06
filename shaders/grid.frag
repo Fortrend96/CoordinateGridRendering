@@ -66,6 +66,10 @@ float CreateDotMask(
     float radius
 )
 {
+    // Переводим расстояние до узла в условные экранные единицы.
+    //
+    // Если dx примерно равен fx, значит по X точка удалена примерно на 1 пиксель.
+    // То же самое для dy / fy.
     vec2 d = vec2(
         float(dx) / fx,
         float(dy) / fy
@@ -73,6 +77,8 @@ float CreateDotMask(
 
     float dist = length(d);
 
+    // radius — радиус точки в условных пикселях.
+    // +1.0 даёт мягкий антиалиасинг края.
     return 1.0 - smoothstep(radius, radius + 1.0, dist);
 }
 
@@ -80,11 +86,17 @@ void main()
 {
     vec2 fragCoord = gl_FragCoord.xy;
 
+    // OpenGL NDC:
+    // x = -1 слева, +1 справа
+    // y = -1 снизу, +1 сверху
     vec2 ndc = vec2(
         fragCoord.x / float(uViewportSize.x) * 2.0 - 1.0,
         fragCoord.y / float(uViewportSize.y) * 2.0 - 1.0
     );
 
+    // OpenGL convention:
+    // near plane = -1
+    // far plane  =  1
     dvec4 nearClip = dvec4(ndc, -1.0, 1.0);
     dvec4 farClip  = dvec4(ndc,  1.0, 1.0);
 
@@ -97,8 +109,11 @@ void main()
     dvec3 rayOrigin = nearWorld.xyz;
     dvec3 rayDir = normalize(farWorld.xyz - nearWorld.xyz);
 
+    // Пересечение луча с плоскостью сетки.
     double denom = dot(rayDir, uGridNormal);
 
+    // Если смотрим почти вдоль плоскости, сетку не рисуем.
+    // Это защищает от визуального шума при взгляде "с ребра".
     if (abs(denom) < uMinViewNormalDot)
     {
         discard;
@@ -113,11 +128,16 @@ void main()
 
     dvec3 worldPos = rayOrigin + rayDir * t;
 
+    // Переход в локальную систему координат сетки.
+    //
+    // Важно, что worldPos и uGridOrigin — double.
+    // Это уменьшает потери точности при больших мировых координатах.
     dvec3 local = worldPos - uGridOrigin;
 
     double gx = dot(local, uGridAxisX);
     double gy = dot(local, uGridAxisY);
 
+    // Ограничение прямоугольником в локальной СК сетки.
     if (uIsBounded)
     {
         if (
@@ -140,21 +160,20 @@ void main()
     float fgx = float(gx);
     float fgy = float(gy);
 
+    // fwidth показывает изменение величины между соседними пикселями.
+    // Через него делаем линии более стабильными на экране.
     float fx = max(fwidth(fgx), 1e-6);
     float fy = max(fwidth(fgy), 1e-6);
 
-    // LOD / fade плотной сетки
-    float minorStepPixelsX = float(uMinorStep) / fx;
-    float minorStepPixelsY = float(uMinorStep) / fy;
-
-    float majorStepPixelsX = float(uMajorStep) / fx;
-    float majorStepPixelsY = float(uMajorStep) / fy;
-
-    float minorStepPixels = min(minorStepPixelsX, minorStepPixelsY);
-    float majorStepPixels = min(majorStepPixelsX, majorStepPixelsY);
-
-    float minorLodFade = smoothstep(3.0, 8.0, minorStepPixels);
-    float majorLodFade = smoothstep(3.0, 8.0, majorStepPixels);
+    // Затухание сетки вдали отключено.
+    //
+    // Раньше здесь был LOD fade, который гасил малые и большие линии,
+    // если шаг сетки становился слишком маленьким на экране.
+    // Это уменьшало муар, но визуально выглядело как затемнение вдали.
+    //
+    // Сейчас яркость сетки не зависит от расстояния до камеры.
+    float minorLodFade = 1.0;
+    float majorLodFade = 1.0;
 
     float minorMask = 0.0;
     float majorMask = 0.0;
@@ -162,6 +181,13 @@ void main()
     float yAxisMask = 0.0;
 
     // Оси рисуем как лучи из origin, а не как бесконечные прямые.
+    //
+    // gx — координата вдоль оси X сетки.
+    // gy — координата вдоль оси Y сетки.
+    //
+    // Поэтому:
+    // - ось X рисуется только при gx >= 0;
+    // - ось Y рисуется только при gy >= 0.
     const double dAxisDirectionEpsilon = 1e-9;
 
     float xAxisDirectionMask = gx >= -dAxisDirectionEpsilon ? 1.0 : 0.0;
@@ -169,6 +195,7 @@ void main()
 
     if (uDrawDots)
     {
+        // Режим точек в узлах сетки.
         minorMask = CreateDotMask(
             dxMinor,
             dyMinor,
@@ -185,11 +212,18 @@ void main()
             uDotRadius * 1.35
         );
 
+        // Оси оставляем линиями даже в режиме точек,
+        // чтобы направление X/Y было хорошо видно.
+        //
+        // Важно:
+        // - для abs(gy) используем fy;
+        // - для abs(gx) используем fx.
         xAxisMask = xAxisDirectionMask * CreateLineMask(abs(gy), fy, uAxisThickness);
         yAxisMask = yAxisDirectionMask * CreateLineMask(abs(gx), fx, uAxisThickness);
     }
     else
     {
+        // Режим линий.
         float minorX = CreateLineMask(dxMinor, fx, uMinorThickness);
         float minorY = CreateLineMask(dyMinor, fy, uMinorThickness);
         minorMask = max(minorX, minorY);
@@ -202,9 +236,12 @@ void main()
         yAxisMask = yAxisDirectionMask * CreateLineMask(abs(gx), fx, uAxisThickness);
     }
 
+    // Сейчас множители равны 1.0.
+    // Оставляем эти строки, чтобы при необходимости быстро вернуть LOD-логику.
     minorMask *= minorLodFade;
     majorMask *= majorLodFade;
 
+    // denom < 0 означает, что луч смотрит на сторону нормали.
     bool isTopSide = denom < 0.0;
 
     vec4 planeColor = isTopSide ? uPlaneColorTop : uPlaneColorBottom;
@@ -213,6 +250,8 @@ void main()
     vec4 xAxisColor = isTopSide ? uXAxisColorTop : uXAxisColorBottom;
     vec4 yAxisColor = isTopSide ? uYAxisColorTop : uYAxisColorBottom;
 
+    // Приоритет:
+    // плоскость -> малые линии/точки -> большие линии/точки -> ось X -> ось Y.
     vec4 color = planeColor;
 
     color = mix(color, minorColor, minorMask);
@@ -225,11 +264,19 @@ void main()
         discard;
     }
 
+    // Настоящая глубина точки сетки.
     dvec4 clip = uViewProj * dvec4(worldPos, 1.0);
     double ndcZ = clip.z / clip.w;
 
+    // OpenGL NDC z: [-1, 1]
+    // Depth buffer: [0, 1]
     double depth = ndcZ * 0.5 + 0.5;
 
+    // Важный момент:
+    // безусловный clamp может создавать визуальные артефакты,
+    // потому что фрагменты за near/far всё равно начинают рисоваться.
+    //
+    // Поэтому clamp сделан отдельным режимом.
     if (uClampDepth)
     {
         depth = clamp(depth, 0.0, 1.0);
