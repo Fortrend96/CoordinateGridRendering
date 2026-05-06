@@ -1,6 +1,8 @@
 #include "AxisMarkerRenderer.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <vector>
 
 namespace
@@ -22,20 +24,85 @@ namespace
         arrVertices.push_back({ vEnd, vColor });
     }
 
+    glm::dvec2 ProjectLocalPointToScreen(
+        const glm::dmat4& mViewProj,
+        const glm::dvec3& vGridOrigin,
+        const glm::dvec3& vLocalPosition,
+        const glm::dvec2& vViewportSize
+    )
+    {
+        const glm::dvec3 vWorldPosition = vGridOrigin + vLocalPosition;
+        const glm::dvec4 vClipPosition = mViewProj * glm::dvec4(vWorldPosition, 1.0);
+
+        if (std::abs(vClipPosition.w) < 1e-12)
+        {
+            return glm::dvec2(0.0, 0.0);
+        }
+
+        const glm::dvec3 vNdc = glm::dvec3(vClipPosition) / vClipPosition.w;
+
+        return glm::dvec2(
+            (vNdc.x * 0.5 + 0.5) * vViewportSize.x,
+            (vNdc.y * 0.5 + 0.5) * vViewportSize.y
+        );
+    }
+
+    double GetPixelsPerWorldUnit(
+        const glm::dmat4& mViewProj,
+        const glm::dvec3& vGridOrigin,
+        const glm::dvec3& vLocalDirection,
+        const glm::dvec2& vViewportSize
+    )
+    {
+        const glm::dvec3 vDirection = glm::normalize(vLocalDirection);
+
+        const glm::dvec2 vScreenOrigin = ProjectLocalPointToScreen(
+            mViewProj,
+            vGridOrigin,
+            glm::dvec3(0.0, 0.0, 0.0),
+            vViewportSize
+        );
+
+        const glm::dvec2 vScreenUnit = ProjectLocalPointToScreen(
+            mViewProj,
+            vGridOrigin,
+            vDirection,
+            vViewportSize
+        );
+
+        const double dPixelsPerUnit = glm::length(vScreenUnit - vScreenOrigin);
+
+        return std::max(dPixelsPerUnit, 1e-6);
+    }
+
+    double PixelsToWorldUnits(
+        double dPixels,
+        double dPixelsPerWorldUnit
+    )
+    {
+        return dPixels / std::max(dPixelsPerWorldUnit, 1e-6);
+    }
+
     void AppendGlyphX(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const glm::dvec3& vCenter,
         const glm::dvec3& vBillboardRight,
         const glm::dvec3& vBillboardUp,
-        double dSize,
+        double dHalfSizeWorld,
         const glm::vec4& vColor
     )
     {
-        const glm::dvec3 vLeftBottom = vCenter - vBillboardRight * dSize - vBillboardUp * dSize;
-        const glm::dvec3 vRightTop = vCenter + vBillboardRight * dSize + vBillboardUp * dSize;
+        const glm::dvec3 vLeftBottom =
+            vCenter - vBillboardRight * dHalfSizeWorld - vBillboardUp * dHalfSizeWorld;
 
-        const glm::dvec3 vLeftTop = vCenter - vBillboardRight * dSize + vBillboardUp * dSize;
-        const glm::dvec3 vRightBottom = vCenter + vBillboardRight * dSize - vBillboardUp * dSize;
+        const glm::dvec3 vRightTop =
+            vCenter + vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
+
+        const glm::dvec3 vLeftTop =
+            vCenter - vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
+
+        const glm::dvec3 vRightBottom =
+            vCenter + vBillboardRight * dHalfSizeWorld - vBillboardUp * dHalfSizeWorld;
 
         AppendLine(arrVertices, vLeftBottom, vRightTop, vColor);
         AppendLine(arrVertices, vLeftTop, vRightBottom, vColor);
@@ -46,14 +113,20 @@ namespace
         const glm::dvec3& vCenter,
         const glm::dvec3& vBillboardRight,
         const glm::dvec3& vBillboardUp,
-        double dSize,
+        double dHalfSizeWorld,
         const glm::vec4& vColor
     )
     {
-        const glm::dvec3 vLeftTop = vCenter - vBillboardRight * dSize + vBillboardUp * dSize;
-        const glm::dvec3 vRightTop = vCenter + vBillboardRight * dSize + vBillboardUp * dSize;
+        const glm::dvec3 vLeftTop =
+            vCenter - vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
+
+        const glm::dvec3 vRightTop =
+            vCenter + vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
+
         const glm::dvec3 vMiddle = vCenter;
-        const glm::dvec3 vBottom = vCenter - vBillboardUp * dSize;
+
+        const glm::dvec3 vBottom =
+            vCenter - vBillboardUp * dHalfSizeWorld;
 
         AppendLine(arrVertices, vLeftTop, vMiddle, vColor);
         AppendLine(arrVertices, vRightTop, vMiddle, vColor);
@@ -65,14 +138,21 @@ namespace
         const glm::dvec3& vCenter,
         const glm::dvec3& vBillboardRight,
         const glm::dvec3& vBillboardUp,
-        double dSize,
+        double dHalfSizeWorld,
         const glm::vec4& vColor
     )
     {
-        const glm::dvec3 vLeftTop = vCenter - vBillboardRight * dSize + vBillboardUp * dSize;
-        const glm::dvec3 vRightTop = vCenter + vBillboardRight * dSize + vBillboardUp * dSize;
-        const glm::dvec3 vLeftBottom = vCenter - vBillboardRight * dSize - vBillboardUp * dSize;
-        const glm::dvec3 vRightBottom = vCenter + vBillboardRight * dSize - vBillboardUp * dSize;
+        const glm::dvec3 vLeftTop =
+            vCenter - vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
+
+        const glm::dvec3 vRightTop =
+            vCenter + vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
+
+        const glm::dvec3 vLeftBottom =
+            vCenter - vBillboardRight * dHalfSizeWorld - vBillboardUp * dHalfSizeWorld;
+
+        const glm::dvec3 vRightBottom =
+            vCenter + vBillboardRight * dHalfSizeWorld - vBillboardUp * dHalfSizeWorld;
 
         AppendLine(arrVertices, vLeftTop, vRightTop, vColor);
         AppendLine(arrVertices, vRightTop, vLeftBottom, vColor);
@@ -81,6 +161,7 @@ namespace
 
     void BuildAxisMarkerVertices(
         const SGridGeometry& sGridGeometry,
+        const SGridFrameData& sFrameData,
         const SAxisMarkerStyle& sStyle,
         const glm::dvec3& vCameraRight,
         const glm::dvec3& vCameraUp,
@@ -91,38 +172,107 @@ namespace
 
         const glm::dvec3 vOriginLocal(0.0, 0.0, 0.0);
 
-        // Реальные направления осей маркера в мире.
         const glm::dvec3 vAxisX = glm::normalize(sGridGeometry.vAxisX);
         const glm::dvec3 vAxisY = glm::normalize(sGridGeometry.vAxisY);
         const glm::dvec3 vAxisZ = glm::normalize(sGridGeometry.vNormal);
 
-        const double dAxisLength = sStyle.dAxisLength;
-        const double dLetterOffset = sStyle.dLetterOffset;
-        const double dLetterSize = sStyle.dLetterSize;
+        // Считаем, сколько пикселей занимает 1 world unit около origin
+        // в направлении каждой оси. Это позволяет задать длину маркера
+        // в пикселях и получить world-space длину для текущего zoom.
+        const double dPixelsPerUnitX = GetPixelsPerWorldUnit(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            vAxisX,
+            sFrameData.vViewportSize
+        );
 
-        const glm::dvec3 vXEnd = vAxisX * dAxisLength;
-        const glm::dvec3 vYEnd = vAxisY * dAxisLength;
-        const glm::dvec3 vZEnd = vAxisZ * dAxisLength;
+        const double dPixelsPerUnitY = GetPixelsPerWorldUnit(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            vAxisY,
+            sFrameData.vViewportSize
+        );
+
+        const double dPixelsPerUnitZ = GetPixelsPerWorldUnit(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            vAxisZ,
+            sFrameData.vViewportSize
+        );
+
+        const double dPixelsPerUnitBillboardRight = GetPixelsPerWorldUnit(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            vCameraRight,
+            sFrameData.vViewportSize
+        );
+
+        const double dPixelsPerUnitBillboardUp = GetPixelsPerWorldUnit(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            vCameraUp,
+            sFrameData.vViewportSize
+        );
+
+        const double dPixelsPerUnitBillboard =
+            std::max(
+                (dPixelsPerUnitBillboardRight + dPixelsPerUnitBillboardUp) * 0.5,
+                1e-6
+            );
+
+        const double dAxisLengthXWorld = PixelsToWorldUnits(
+            sStyle.dAxisLengthPixels,
+            dPixelsPerUnitX
+        );
+
+        const double dAxisLengthYWorld = PixelsToWorldUnits(
+            sStyle.dAxisLengthPixels,
+            dPixelsPerUnitY
+        );
+
+        const double dAxisLengthZWorld = PixelsToWorldUnits(
+            sStyle.dAxisLengthPixels,
+            dPixelsPerUnitZ
+        );
+
+        const double dLetterOffsetWorld = PixelsToWorldUnits(
+            sStyle.dLetterOffsetPixels,
+            dPixelsPerUnitBillboard
+        );
+
+        const double dLetterHalfSizeWorld = PixelsToWorldUnits(
+            sStyle.dLetterSizePixels,
+            dPixelsPerUnitBillboard
+        );
+
+        const glm::dvec3 vXEnd = vAxisX * dAxisLengthXWorld;
+        const glm::dvec3 vYEnd = vAxisY * dAxisLengthYWorld;
+        const glm::dvec3 vZEnd = vAxisZ * dAxisLengthZWorld;
 
         // Короткие оси из одной точки.
+        // Их экранная длина остаётся примерно постоянной при zoom.
         AppendLine(arrVertices, vOriginLocal, vXEnd, sStyle.vAxisColor);
         AppendLine(arrVertices, vOriginLocal, vYEnd, sStyle.vAxisColor);
         AppendLine(arrVertices, vOriginLocal, vZEnd, sStyle.vAxisColor);
 
-        // Центры букв располагаем возле концов осей.
-        const glm::dvec3 vXLabelCenter = vAxisX * (dAxisLength + dLetterOffset);
-        const glm::dvec3 vYLabelCenter = vAxisY * (dAxisLength + dLetterOffset);
-        const glm::dvec3 vZLabelCenter = vAxisZ * (dAxisLength + dLetterOffset);
+        // Центры букв располагаем возле концов соответствующих осей.
+        const glm::dvec3 vXLabelCenter =
+            vAxisX * (dAxisLengthXWorld + dLetterOffsetWorld);
 
-        // Ключевой момент:
-        // сами буквы строим не в базисе сетки, а в базисе камеры.
-        // Тогда X/Y/Z всегда "смотрят" на нас.
+        const glm::dvec3 vYLabelCenter =
+            vAxisY * (dAxisLengthYWorld + dLetterOffsetWorld);
+
+        const glm::dvec3 vZLabelCenter =
+            vAxisZ * (dAxisLengthZWorld + dLetterOffsetWorld);
+
+        // Буквы строятся в billboard-базисе камеры,
+        // поэтому всегда смотрят на пользователя.
         AppendGlyphX(
             arrVertices,
             vXLabelCenter,
             vCameraRight,
             vCameraUp,
-            dLetterSize,
+            dLetterHalfSizeWorld,
             sStyle.vTextColor
         );
 
@@ -131,7 +281,7 @@ namespace
             vYLabelCenter,
             vCameraRight,
             vCameraUp,
-            dLetterSize,
+            dLetterHalfSizeWorld,
             sStyle.vTextColor
         );
 
@@ -140,7 +290,7 @@ namespace
             vZLabelCenter,
             vCameraRight,
             vCameraUp,
-            dLetterSize,
+            dLetterHalfSizeWorld,
             sStyle.vTextColor
         );
     }
@@ -150,9 +300,11 @@ CAxisMarkerRenderer::CAxisMarkerRenderer()
     : m_nVao(0)
     , m_nVbo(0)
 {
-    m_sStyle.dAxisLength = 2.0;
-    m_sStyle.dLetterOffset = 0.45;
-    m_sStyle.dLetterSize = 0.22;
+    // Все размеры — в пикселях.
+    // Поэтому маркер сохраняет визуальный размер при zoom.
+    m_sStyle.dAxisLengthPixels = 48.0;
+    m_sStyle.dLetterOffsetPixels = 10.0;
+    m_sStyle.dLetterSizePixels = 6.0;
 
     m_sStyle.fLineWidth = 1.5f;
 
@@ -204,7 +356,6 @@ void CAxisMarkerRenderer::Initialize()
     glBindVertexArray(m_nVao);
     glBindBuffer(GL_ARRAY_BUFFER, m_nVbo);
 
-    // location 0: dvec3 local position.
     glEnableVertexAttribArray(0);
     glVertexAttribLPointer(
         0,
@@ -214,7 +365,6 @@ void CAxisMarkerRenderer::Initialize()
         reinterpret_cast<const void*>(offsetof(SAxisMarkerVertex, vLocalPosition))
     );
 
-    // location 1: vec4 color.
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(
         1,
@@ -260,19 +410,16 @@ void CAxisMarkerRenderer::Render(
     const SGridGeometry& sGridGeometry
 ) const
 {
-    // Из view-матрицы получаем world-space базис камеры.
-    //
-    // inverse(view) содержит ориентацию камеры в мировом пространстве:
-    // column 0 -> right
-    // column 1 -> up
     const glm::dmat4 mInvView = glm::inverse(sFrameData.mView);
 
     const glm::dvec3 vCameraRight = glm::normalize(glm::dvec3(mInvView[0]));
     const glm::dvec3 vCameraUp = glm::normalize(glm::dvec3(mInvView[1]));
 
     std::vector<SAxisMarkerVertex> arrVertices;
+
     BuildAxisMarkerVertices(
         sGridGeometry,
+        sFrameData,
         m_sStyle,
         vCameraRight,
         vCameraUp,
@@ -299,7 +446,6 @@ void CAxisMarkerRenderer::Render(
         GL_DYNAMIC_DRAW
     );
 
-    // Маркер начала координат рисуем поверх сетки.
     const GLboolean bDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
 
     if (bDepthTestEnabled == GL_TRUE)

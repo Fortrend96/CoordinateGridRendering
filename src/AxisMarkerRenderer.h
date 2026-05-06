@@ -9,18 +9,14 @@
 
 // Визуальные параметры маркера начала координат.
 //
-// Это отдельный маленький UCS-like marker:
-// короткие белые оси X/Y/Z и буквенные подписи.
-//
 // Важно:
-// - линии осей живут в мировой системе координат;
-// - буквы X/Y/Z делаются billboard-стилем,
-//   то есть всегда повёрнуты к камере.
+// размеры задаются в пикселях, а не в мировых единицах.
+// Это нужно, чтобы маркер не менял визуальный размер при zoom.
 struct SAxisMarkerStyle
 {
-    double dAxisLength;
-    double dLetterOffset;
-    double dLetterSize;
+    double dAxisLengthPixels;
+    double dLetterOffsetPixels;
+    double dLetterSizePixels;
 
     float fLineWidth;
 
