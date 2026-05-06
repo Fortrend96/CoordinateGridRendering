@@ -3,18 +3,12 @@
 CGridRenderer::CGridRenderer()
     : m_nFullscreenVao(0)
 {
-    // Значения по умолчанию: обычная сетка в плоскости Z = 0.
-    m_sGeometry.vOrigin = glm::dvec3(0.0, 0.0, 0.0);
-    m_sGeometry.vAxisX = glm::dvec3(1.0, 0.0, 0.0);
-    m_sGeometry.vAxisY = glm::dvec3(0.0, 1.0, 0.0);
-    m_sGeometry.vNormal = glm::dvec3(0.0, 0.0, 1.0);
-
     m_sStyle.dMinorStep = 1.0;
     m_sStyle.dMajorStep = 10.0;
 
-    m_sStyle.fMinorThickness = 1.0f;
-    m_sStyle.fMajorThickness = 1.5f;
-    m_sStyle.fAxisThickness = 2.5f;
+    m_sStyle.fMinorThickness = 0.9f;
+    m_sStyle.fMajorThickness = 1.2f;
+    m_sStyle.fAxisThickness = 1.8f;
 
     // sin(5°) ~= 0.087.
     // Если abs(dot(rayDir, normal)) меньше этого значения,
@@ -22,7 +16,6 @@ CGridRenderer::CGridRenderer()
     m_sStyle.dMinViewNormalDot = 0.087;
 
     // По умолчанию выключаем clamp depth.
-    // Это безопаснее визуально: фрагменты за near/far не "прилипают" к границе.
     m_sStyle.bClampDepth = false;
 
     m_sStyle.bIsBounded = false;
@@ -32,19 +25,18 @@ CGridRenderer::CGridRenderer()
     m_sStyle.fDotRadius = 2.0f;
 
     // Верхняя сторона.
-    m_sStyle.vPlaneColorTop = glm::vec4(0.03f, 0.03f, 0.035f, 0.35f);
-    m_sStyle.vMinorColorTop = glm::vec4(0.32f, 0.32f, 0.34f, 0.55f);
-    m_sStyle.vMajorColorTop = glm::vec4(0.58f, 0.58f, 0.62f, 0.75f);
-    m_sStyle.vXAxisColorTop = glm::vec4(0.95f, 0.12f, 0.12f, 0.95f);
-    m_sStyle.vYAxisColorTop = glm::vec4(0.15f, 0.85f, 0.20f, 0.95f);
+    m_sStyle.vPlaneColorTop = glm::vec4(0.145f, 0.176f, 0.223f, 1.00f);
+    m_sStyle.vMinorColorTop = glm::vec4(0.215f, 0.250f, 0.305f, 0.72f);
+    m_sStyle.vMajorColorTop = glm::vec4(0.305f, 0.355f, 0.430f, 0.92f);
+    m_sStyle.vXAxisColorTop = glm::vec4(0.860f, 0.170f, 0.180f, 1.00f);
+    m_sStyle.vYAxisColorTop = glm::vec4(0.180f, 0.730f, 0.300f, 1.00f);
 
     // Нижняя сторона.
-    // Делаем чуть темнее, чтобы было видно переключение сторон.
-    m_sStyle.vPlaneColorBottom = glm::vec4(0.025f, 0.025f, 0.03f, 0.30f);
-    m_sStyle.vMinorColorBottom = glm::vec4(0.24f, 0.24f, 0.26f, 0.45f);
-    m_sStyle.vMajorColorBottom = glm::vec4(0.42f, 0.42f, 0.46f, 0.65f);
-    m_sStyle.vXAxisColorBottom = glm::vec4(0.65f, 0.08f, 0.08f, 0.85f);
-    m_sStyle.vYAxisColorBottom = glm::vec4(0.08f, 0.55f, 0.12f, 0.85f);
+    m_sStyle.vPlaneColorBottom = glm::vec4(0.125f, 0.152f, 0.192f, 1.00f);
+    m_sStyle.vMinorColorBottom = glm::vec4(0.180f, 0.210f, 0.260f, 0.62f);
+    m_sStyle.vMajorColorBottom = glm::vec4(0.255f, 0.300f, 0.370f, 0.82f);
+    m_sStyle.vXAxisColorBottom = glm::vec4(0.620f, 0.120f, 0.130f, 0.95f);
+    m_sStyle.vYAxisColorBottom = glm::vec4(0.130f, 0.560f, 0.230f, 0.95f);
 }
 
 CGridRenderer::~CGridRenderer()

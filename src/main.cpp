@@ -718,7 +718,7 @@ int main()
 
         glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
 
-        glClearColor(0.02f, 0.02f, 0.025f, 1.0f);
+        glClearColor(0.145f, 0.176f, 0.223f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         const glm::dmat4 mView = camera.GetViewMatrix();
