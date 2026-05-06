@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "AxisMarkerRenderer.h"
 #include "GridRenderer.h"
 #include "OrbitCamera.h"
 #include "ShaderProgram.h"
@@ -518,12 +519,18 @@ int main()
     PrintControls();
 
     CShaderProgram gridShaderProgram;
+    CShaderProgram axisMarkerShaderProgram;
 
     try
     {
         gridShaderProgram.LoadFromFiles(
             "shaders/fullscreen_triangle.vert",
             "shaders/grid.frag"
+        );
+
+        axisMarkerShaderProgram.LoadFromFiles(
+            "shaders/axis_marker.vert",
+            "shaders/axis_marker.frag"
         );
     }
     catch (const std::exception& exception)
@@ -538,6 +545,9 @@ int main()
 
     CGridRenderer gridRenderer;
     gridRenderer.Initialize();
+
+    CAxisMarkerRenderer axisMarkerRenderer;
+    axisMarkerRenderer.Initialize();
 
     SGridStyle sGridStyle = gridRenderer.GetStyle();
     gridRenderer.SetStyle(sGridStyle);
@@ -730,6 +740,7 @@ int main()
         const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
 
         SGridFrameData sFrameData;
+        sFrameData.mView = mView;
         sFrameData.mViewProj = mViewProj;
         sFrameData.mInvViewProj = mInvViewProj;
         sFrameData.vViewportSize = glm::dvec2(
@@ -740,11 +751,17 @@ int main()
         gridRenderer.SetGeometry(sGridGeometry);
         gridRenderer.Render(gridShaderProgram, sFrameData);
 
+        axisMarkerRenderer.Render(
+            axisMarkerShaderProgram,
+            sFrameData,
+            sGridGeometry
+        );
+
         glfwSwapBuffers(pWindow);
     }
 
-    // CGridRenderer сам удалит VAO в деструкторе,
-    // но явный Destroy делает порядок освобождения ресурсов очевидным.
+    // Явный Destroy делает порядок освобождения ресурсов очевидным.
+    axisMarkerRenderer.Destroy();
     gridRenderer.Destroy();
 
     glfwDestroyWindow(pWindow);

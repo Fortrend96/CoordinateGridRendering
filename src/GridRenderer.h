@@ -54,9 +54,13 @@ struct SGridStyle
     glm::vec4 vYAxisColorBottom;
 };
 
-// Данные кадра, которые нужны сетке для рендера.
+// Данные кадра, которые нужны сетке и вспомогательным рендерам.
 struct SGridFrameData
 {
+    // View-матрица нужна, например, для billboard-надписей,
+    // которые должны смотреть на камеру.
+    glm::dmat4 mView;
+
     glm::dmat4 mViewProj;
     glm::dmat4 mInvViewProj;
     glm::dvec2 vViewportSize;
