@@ -2,58 +2,134 @@
 
 layout(location = 0) out vec4 outColor;
 
+// -----------------------------------------------------------------------------
+// Данные луча из vertex shader
+// -----------------------------------------------------------------------------
+
+// Локальная точка луча на near plane относительно uGridOrigin.
+noperspective in vec3 vNearLocal;
+
+// Локальная точка луча на far plane относительно uGridOrigin.
+noperspective in vec3 vFarLocal;
+
+// -----------------------------------------------------------------------------
+// Матрицы и параметры viewport
+// -----------------------------------------------------------------------------
+
+// View-projection матрица.
+// Нужна для вычисления настоящей глубины точки сетки.
 uniform dmat4 uViewProj;
-uniform dmat4 uInvViewProj;
 
-uniform dvec2 uViewportSize;
+// -----------------------------------------------------------------------------
+// Геометрия сетки
+// -----------------------------------------------------------------------------
 
+// Начало сетки в world-space.
 uniform dvec3 uGridOrigin;
+
+// Ось X сетки в world-space.
+// Предполагаем, что нормализована.
 uniform dvec3 uGridAxisX;
+
+// Ось Y сетки в world-space.
+// Предполагаем, что нормализована.
 uniform dvec3 uGridAxisY;
+
+// Нормаль плоскости сетки в world-space.
+// Предполагаем, что нормализована.
 uniform dvec3 uGridNormal;
 
+// Если abs(dot(rayDir, normal)) меньше этого значения,
+// сетку не рисуем: взгляд почти вдоль плоскости.
 uniform double uMinViewNormalDot;
 
+// -----------------------------------------------------------------------------
+// Режимы отображения
+// -----------------------------------------------------------------------------
+
+// false — depth за near/far отбрасываем;
+// true  — depth прижимаем к [0; 1].
 uniform bool uClampDepth;
 
-// Новый параметр.
 // false — рисуем только линии/оси;
 // true  — дополнительно заливаем плоскость сетки.
 uniform bool uDrawPlane;
 
+// Ограниченная / бесконечная сетка.
 uniform bool uIsBounded;
-uniform dvec4 uGridBounds; // minX, minY, maxX, maxY
 
+// Границы ограниченной сетки в локальной СК:
+// x = minX
+// y = minY
+// z = maxX
+// w = maxY
+uniform dvec4 uGridBounds;
+
+// false — рисуем линии;
+// true  — рисуем точки в узлах.
 uniform bool uDrawDots;
-uniform float uDotRadius;
 
+// Показывать малую сетку.
+uniform bool uShowMinorGrid;
+
+// Показывать большую сетку.
+uniform bool uShowMajorGrid;
+
+// Показывать оси X/Y.
+uniform bool uShowAxes;
+
+// -----------------------------------------------------------------------------
+// Шаги и толщины
+// -----------------------------------------------------------------------------
+
+// Малый шаг сетки.
+// Теперь он может быть адаптивным и меняться при zoom.
 uniform double uMinorStep;
+
+// Большой шаг сетки.
+// Обычно равен uMinorStep * 10.
 uniform double uMajorStep;
 
+// Толщина малых линий.
 uniform float uMinorThickness;
+
+// Толщина больших линий.
 uniform float uMajorThickness;
+
+// Толщина осей.
 uniform float uAxisThickness;
 
-// Цвета верхней стороны сетки.
+// Радиус точек в режиме dots.
+uniform float uDotRadius;
+
+// -----------------------------------------------------------------------------
+// Цвета верхней стороны
+// -----------------------------------------------------------------------------
+
 uniform vec4 uPlaneColorTop;
 uniform vec4 uMinorColorTop;
 uniform vec4 uMajorColorTop;
 uniform vec4 uXAxisColorTop;
 uniform vec4 uYAxisColorTop;
 
-// Цвета нижней стороны сетки.
+// -----------------------------------------------------------------------------
+// Цвета нижней стороны
+// -----------------------------------------------------------------------------
+
 uniform vec4 uPlaneColorBottom;
 uniform vec4 uMinorColorBottom;
 uniform vec4 uMajorColorBottom;
 uniform vec4 uXAxisColorBottom;
 uniform vec4 uYAxisColorBottom;
 
+// Расстояние от координаты x до ближайшей линии, кратной step.
 double DistanceToGridLine(double x, double step)
 {
     double nearestLine = round(x / step) * step;
     return abs(x - nearestLine);
 }
 
+// Маска линии с антиалиасингом через fwidth.
 float CreateLineMask(double distanceToLine, float pixelWidth, float thickness)
 {
     return 1.0 - smoothstep(
@@ -63,6 +139,7 @@ float CreateLineMask(double distanceToLine, float pixelWidth, float thickness)
     );
 }
 
+// Маска точки в узле сетки.
 float CreateDotMask(
     double dx,
     double dy,
@@ -83,25 +160,19 @@ float CreateDotMask(
 
 void main()
 {
-    vec2 fragCoord = gl_FragCoord.xy;
+    // -------------------------------------------------------------------------
+    // 1. Луч камеры в локальных координатах сетки
+    // -------------------------------------------------------------------------
 
-    vec2 ndc = vec2(
-        fragCoord.x / float(uViewportSize.x) * 2.0 - 1.0,
-        fragCoord.y / float(uViewportSize.y) * 2.0 - 1.0
-    );
+    // Эти точки уже были восстановлены в vertex shader.
+    // Здесь мы больше не делаем uInvViewProj * clip per-pixel.
+    dvec3 rayOriginLocal = dvec3(vNearLocal);
+    dvec3 rayFarLocal = dvec3(vFarLocal);
 
-    dvec4 nearClip = dvec4(ndc, -1.0, 1.0);
-    dvec4 farClip  = dvec4(ndc,  1.0, 1.0);
+    dvec3 rayDir = normalize(rayFarLocal - rayOriginLocal);
 
-    dvec4 nearWorld = uInvViewProj * nearClip;
-    dvec4 farWorld  = uInvViewProj * farClip;
-
-    nearWorld /= nearWorld.w;
-    farWorld  /= farWorld.w;
-
-    dvec3 rayOrigin = nearWorld.xyz;
-    dvec3 rayDir = normalize(farWorld.xyz - nearWorld.xyz);
-
+    // Плоскость сетки в локальных координатах проходит через (0, 0, 0),
+    // потому что мы работаем относительно uGridOrigin.
     double denom = dot(rayDir, uGridNormal);
 
     if (abs(denom) < uMinViewNormalDot)
@@ -109,19 +180,26 @@ void main()
         discard;
     }
 
-    double t = dot(uGridOrigin - rayOrigin, uGridNormal) / denom;
+    // Пересечение луча с плоскостью:
+    //
+    // dot(rayOriginLocal + rayDir * t, normal) = 0
+    //
+    // t = -dot(rayOriginLocal, normal) / dot(rayDir, normal)
+    double t = -dot(rayOriginLocal, uGridNormal) / denom;
 
     if (t < 0.0)
     {
         discard;
     }
 
-    dvec3 worldPos = rayOrigin + rayDir * t;
+    dvec3 localPos = rayOriginLocal + rayDir * t;
 
-    dvec3 local = worldPos - uGridOrigin;
+    // -------------------------------------------------------------------------
+    // 2. Локальные координаты сетки
+    // -------------------------------------------------------------------------
 
-    double gx = dot(local, uGridAxisX);
-    double gy = dot(local, uGridAxisY);
+    double gx = dot(localPos, uGridAxisX);
+    double gy = dot(localPos, uGridAxisY);
 
     if (uIsBounded)
     {
@@ -136,6 +214,10 @@ void main()
         }
     }
 
+    // -------------------------------------------------------------------------
+    // 3. Расстояния до линий
+    // -------------------------------------------------------------------------
+
     double dxMinor = DistanceToGridLine(gx, uMinorStep);
     double dyMinor = DistanceToGridLine(gy, uMinorStep);
 
@@ -148,16 +230,12 @@ void main()
     float fx = max(fwidth(fgx), 1e-6);
     float fy = max(fwidth(fgy), 1e-6);
 
-    // Затухание сетки вдали отключено.
-    float minorLodFade = 1.0;
-    float majorLodFade = 1.0;
-
     float minorMask = 0.0;
     float majorMask = 0.0;
     float xAxisMask = 0.0;
     float yAxisMask = 0.0;
 
-    // Оси рисуем как лучи из origin.
+    // Оси рисуем как лучи из origin, а не как бесконечные прямые.
     const double dAxisDirectionEpsilon = 1e-9;
 
     float xAxisDirectionMask = gx >= -dAxisDirectionEpsilon ? 1.0 : 0.0;
@@ -165,41 +243,60 @@ void main()
 
     if (uDrawDots)
     {
-        minorMask = CreateDotMask(
-            dxMinor,
-            dyMinor,
-            fx,
-            fy,
-            uDotRadius
-        );
+        if (uShowMinorGrid)
+        {
+            minorMask = CreateDotMask(
+                dxMinor,
+                dyMinor,
+                fx,
+                fy,
+                uDotRadius
+            );
+        }
 
-        majorMask = CreateDotMask(
-            dxMajor,
-            dyMajor,
-            fx,
-            fy,
-            uDotRadius * 1.35
-        );
+        if (uShowMajorGrid)
+        {
+            majorMask = CreateDotMask(
+                dxMajor,
+                dyMajor,
+                fx,
+                fy,
+                uDotRadius * 1.35
+            );
+        }
 
-        xAxisMask = xAxisDirectionMask * CreateLineMask(abs(gy), fy, uAxisThickness);
-        yAxisMask = yAxisDirectionMask * CreateLineMask(abs(gx), fx, uAxisThickness);
+        if (uShowAxes)
+        {
+            xAxisMask = xAxisDirectionMask * CreateLineMask(abs(gy), fy, uAxisThickness);
+            yAxisMask = yAxisDirectionMask * CreateLineMask(abs(gx), fx, uAxisThickness);
+        }
     }
     else
     {
-        float minorX = CreateLineMask(dxMinor, fx, uMinorThickness);
-        float minorY = CreateLineMask(dyMinor, fy, uMinorThickness);
-        minorMask = max(minorX, minorY);
+        if (uShowMinorGrid)
+        {
+            float minorX = CreateLineMask(dxMinor, fx, uMinorThickness);
+            float minorY = CreateLineMask(dyMinor, fy, uMinorThickness);
+            minorMask = max(minorX, minorY);
+        }
 
-        float majorX = CreateLineMask(dxMajor, fx, uMajorThickness);
-        float majorY = CreateLineMask(dyMajor, fy, uMajorThickness);
-        majorMask = max(majorX, majorY);
+        if (uShowMajorGrid)
+        {
+            float majorX = CreateLineMask(dxMajor, fx, uMajorThickness);
+            float majorY = CreateLineMask(dyMajor, fy, uMajorThickness);
+            majorMask = max(majorX, majorY);
+        }
 
-        xAxisMask = xAxisDirectionMask * CreateLineMask(abs(gy), fy, uAxisThickness);
-        yAxisMask = yAxisDirectionMask * CreateLineMask(abs(gx), fx, uAxisThickness);
+        if (uShowAxes)
+        {
+            xAxisMask = xAxisDirectionMask * CreateLineMask(abs(gy), fy, uAxisThickness);
+            yAxisMask = yAxisDirectionMask * CreateLineMask(abs(gx), fx, uAxisThickness);
+        }
     }
 
-    minorMask *= minorLodFade;
-    majorMask *= majorLodFade;
+    // -------------------------------------------------------------------------
+    // 4. Цвета
+    // -------------------------------------------------------------------------
 
     bool isTopSide = denom < 0.0;
 
@@ -209,8 +306,6 @@ void main()
     vec4 xAxisColor = isTopSide ? uXAxisColorTop : uXAxisColorBottom;
     vec4 yAxisColor = isTopSide ? uYAxisColorTop : uYAxisColorBottom;
 
-    // Если заливка плоскости выключена и текущий пиксель не попал
-    // ни в одну линию/ось, сразу отбрасываем его.
     float gridMask = max(max(minorMask, majorMask), max(xAxisMask, yAxisMask));
 
     if (!uDrawPlane && gridMask <= 0.001)
@@ -231,6 +326,12 @@ void main()
     {
         discard;
     }
+
+    // -------------------------------------------------------------------------
+    // 5. Глубина
+    // -------------------------------------------------------------------------
+
+    dvec3 worldPos = uGridOrigin + localPos;
 
     dvec4 clip = uViewProj * dvec4(worldPos, 1.0);
     double ndcZ = clip.z / clip.w;

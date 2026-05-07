@@ -9,6 +9,7 @@
 #include "OrbitCamera.h"
 #include "ShaderProgram.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -57,6 +58,38 @@ static void GlfwErrorCallback(int nErrorCode, const char* pszDescription)
     std::cerr << "GLFW error " << nErrorCode << ": " << pszDescription << '\n';
 }
 
+static void CalculateCameraClippingPlanes(
+    const COrbitCamera& camera,
+    double& dNearPlane,
+    double& dFarPlane
+)
+{
+    const double dCameraDistance = camera.GetDistance();
+
+    // Near plane должен уменьшаться при приближении камеры к сетке.
+    //
+    // Если оставить фиксированные 0.1, то при сильном zoom-in часть сетки
+    // окажется между камерой и near plane и будет отбрасываться.
+    dNearPlane = std::clamp(
+        dCameraDistance * 0.0005,
+        0.00001,
+        0.1
+    );
+
+    // Far plane должен расти при отдалении камеры,
+    // иначе сетка будет обрезаться вдали.
+    dFarPlane = std::max(
+        1000.0,
+        dCameraDistance * 50.0
+    );
+
+    // Гарантируем, что far всегда заметно больше near.
+    if (dFarPlane < dNearPlane * 1000.0)
+    {
+        dFarPlane = dNearPlane * 1000.0;
+    }
+}
+
 static glm::dvec2 GetCursorNdc(GLFWwindow* pWindow)
 {
     double dCursorX = 0.0;
@@ -92,7 +125,9 @@ static glm::dvec2 GetCursorNdc(GLFWwindow* pWindow)
 
 static glm::dmat4 CreateProjectionMatrix(
     bool bUseOrthographicProjection,
-    double dAspect
+    double dAspect,
+    double dNearPlane,
+    double dFarPlane
 )
 {
     if (bUseOrthographicProjection)
@@ -109,16 +144,16 @@ static glm::dmat4 CreateProjectionMatrix(
             dHalfWidth,
             -dHalfHeight,
             dHalfHeight,
-            0.1,
-            1000.0
+            dNearPlane,
+            dFarPlane
         );
     }
 
     return glm::perspective(
         glm::radians(60.0),
         dAspect,
-        0.1,
-        1000.0
+        dNearPlane,
+        dFarPlane
     );
 }
 
@@ -140,11 +175,22 @@ static bool TryGetCursorGridPoint(
         ? static_cast<double>(nFramebufferWidth) / static_cast<double>(nFramebufferHeight)
         : 1.0;
 
+    double dNearPlane = 0.1;
+    double dFarPlane = 1000.0;
+
+    CalculateCameraClippingPlanes(
+        camera,
+        dNearPlane,
+        dFarPlane
+    );
+
     const glm::dmat4 mView = camera.GetViewMatrix();
 
     const glm::dmat4 mProjection = CreateProjectionMatrix(
         bUseOrthographicProjection,
-        dAspect
+        dAspect,
+        dNearPlane,
+        dFarPlane
     );
 
     const glm::dmat4 mViewProj = mProjection * mView;
@@ -655,7 +701,6 @@ int main()
             );
         }
 
-        // Переключение перспективной/ортографической проекции.
         const bool bIsPPressed = glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS;
 
         if (bIsPPressed && !bWasPPressed)
@@ -669,7 +714,6 @@ int main()
 
         bWasPPressed = bIsPPressed;
 
-        // Переключение infinite/bounded grid.
         const bool bIsBPressed = glfwGetKey(pWindow, GLFW_KEY_B) == GLFW_PRESS;
 
         if (bIsBPressed && !bWasBPressed)
@@ -684,7 +728,6 @@ int main()
 
         bWasBPressed = bIsBPressed;
 
-        // Переключение режима lines/dots.
         const bool bIsMPressed = glfwGetKey(pWindow, GLFW_KEY_M) == GLFW_PRESS;
 
         if (bIsMPressed && !bWasMPressed)
@@ -699,7 +742,6 @@ int main()
 
         bWasMPressed = bIsMPressed;
 
-        // Переключение depth clamp.
         const bool bIsCPressed = glfwGetKey(pWindow, GLFW_KEY_C) == GLFW_PRESS;
 
         if (bIsCPressed && !bWasCPressed)
@@ -714,10 +756,6 @@ int main()
 
         bWasCPressed = bIsCPressed;
 
-        // Переключение заливки плоскости сетки.
-        //
-        // По умолчанию заливка выключена: фон рисуется через glClearColor,
-        // а grid shader выводит только линии/оси.
         const bool bIsFPressed = glfwGetKey(pWindow, GLFW_KEY_F) == GLFW_PRESS;
 
         if (bIsFPressed && !bWasFPressed)
@@ -750,9 +788,20 @@ int main()
             ? static_cast<double>(nFramebufferWidth) / static_cast<double>(nFramebufferHeight)
             : 1.0;
 
+        double dNearPlane = 0.1;
+        double dFarPlane = 1000.0;
+
+        CalculateCameraClippingPlanes(
+            camera,
+            dNearPlane,
+            dFarPlane
+        );
+
         const glm::dmat4 mProjection = CreateProjectionMatrix(
             bUseOrthographicProjection,
-            dAspect
+            dAspect,
+            dNearPlane,
+            dFarPlane
         );
 
         // OpenGL convention:
@@ -771,6 +820,12 @@ int main()
         );
 
         gridRenderer.SetGeometry(sGridGeometry);
+
+        // AutoCAD-like поведение:
+        // шаг сетки подстраивается под текущий zoom,
+        // чтобы плотность линий на экране оставалась стабильной.
+        gridRenderer.UpdateAdaptiveStep(sFrameData);
+
         gridRenderer.Render(gridShaderProgram, sFrameData);
 
         axisMarkerRenderer.Render(

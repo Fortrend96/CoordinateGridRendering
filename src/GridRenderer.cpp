@@ -1,5 +1,107 @@
 #include "GridRenderer.h"
 
+#include <algorithm>
+#include <cmath>
+
+namespace
+{
+    // Проецирует world-space точку в screen-space.
+    bool ProjectWorldPointToScreen(
+        const glm::dmat4& mViewProj,
+        const glm::dvec3& vWorldPosition,
+        const glm::dvec2& vViewportSize,
+        glm::dvec2& vScreenPosition
+    )
+    {
+        const glm::dvec4 vClip = mViewProj * glm::dvec4(vWorldPosition, 1.0);
+
+        if (std::abs(vClip.w) < 1e-12)
+        {
+            return false;
+        }
+
+        const glm::dvec3 vNdc = glm::dvec3(vClip) / vClip.w;
+
+        vScreenPosition = glm::dvec2(
+            (vNdc.x * 0.5 + 0.5) * vViewportSize.x,
+            (vNdc.y * 0.5 + 0.5) * vViewportSize.y
+        );
+
+        return true;
+    }
+
+    // Считает, сколько пикселей занимает 1 world unit
+    // в заданном направлении около origin сетки.
+    double ComputePixelsPerWorldUnit(
+        const glm::dmat4& mViewProj,
+        const glm::dvec3& vOrigin,
+        const glm::dvec3& vDirection,
+        const glm::dvec2& vViewportSize
+    )
+    {
+        glm::dvec2 vScreenOrigin(0.0);
+        glm::dvec2 vScreenUnit(0.0);
+
+        const glm::dvec3 vNormalizedDirection = glm::normalize(vDirection);
+
+        const bool bOriginProjected = ProjectWorldPointToScreen(
+            mViewProj,
+            vOrigin,
+            vViewportSize,
+            vScreenOrigin
+        );
+
+        const bool bUnitProjected = ProjectWorldPointToScreen(
+            mViewProj,
+            vOrigin + vNormalizedDirection,
+            vViewportSize,
+            vScreenUnit
+        );
+
+        if (!bOriginProjected || !bUnitProjected)
+        {
+            return 0.0;
+        }
+
+        return glm::length(vScreenUnit - vScreenOrigin);
+    }
+
+    // Округляет desiredStep вверх к красивому CAD-like значению:
+    //
+    // ..., 0.1, 0.2, 0.5,
+    // 1, 2, 5,
+    // 10, 20, 50,
+    // 100, ...
+    double RoundUpToNiceStep(double dDesiredStep)
+    {
+        if (!std::isfinite(dDesiredStep) || dDesiredStep <= 0.0)
+        {
+            return 1.0;
+        }
+
+        const double dExponent = std::floor(std::log10(dDesiredStep));
+        const double dBase = std::pow(10.0, dExponent);
+        const double dMantissa = dDesiredStep / dBase;
+
+        double dNiceMantissa = 10.0;
+
+        if (dMantissa <= 1.0)
+        {
+            dNiceMantissa = 1.0;
+        }
+        else if (dMantissa <= 2.0)
+        {
+            dNiceMantissa = 2.0;
+        }
+        else if (dMantissa <= 5.0)
+        {
+            dNiceMantissa = 5.0;
+        }
+
+        return dNiceMantissa * dBase;
+    }
+}
+
 CGridRenderer::CGridRenderer()
     : m_nFullscreenVao(0)
 {
@@ -15,15 +117,12 @@ CGridRenderer::CGridRenderer()
     m_sStyle.fMajorThickness = 1.2f;
     m_sStyle.fAxisThickness = 1.8f;
 
-    // sin(5°) ~= 0.087.
-    // Если abs(dot(rayDir, normal)) меньше этого значения,
-    // значит смотрим почти вдоль плоскости.
-    m_sStyle.dMinViewNormalDot = 0.087;
+    // Значение 0.02 примерно соответствует 1.1 градуса.
+    // Сетка будет скрываться только при почти касательном взгляде,
+    // что ближе к CAD-like поведению.
+    m_sStyle.dMinViewNormalDot = 0.02;
 
     m_sStyle.bClampDepth = false;
-
-    // По умолчанию заливка плоскости выключена.
-    // Фон рисуется через glClearColor, а шейдер сетки выводит только линии.
     m_sStyle.bDrawPlane = false;
 
     m_sStyle.bIsBounded = false;
@@ -31,6 +130,20 @@ CGridRenderer::CGridRenderer()
 
     m_sStyle.bDrawDots = false;
     m_sStyle.fDotRadius = 2.0f;
+
+    // Adaptive grid включён по умолчанию.
+    m_sStyle.bUseAdaptiveStep = true;
+
+    // Примерная желаемая плотность малой сетки.
+    // 18 px даёт читаемую сетку без чрезмерной плотности.
+    m_sStyle.dTargetMinorStepPixels = 18.0;
+
+    // Каждая 10-я малая линия становится большой.
+    m_sStyle.nMajorLineFrequency = 10;
+
+    m_sStyle.bShowMinorGrid = true;
+    m_sStyle.bShowMajorGrid = true;
+    m_sStyle.bShowAxes = true;
 
     // Верхняя сторона.
     m_sStyle.vPlaneColorTop = glm::vec4(0.145f, 0.176f, 0.223f, 1.00f);
@@ -83,11 +196,6 @@ void CGridRenderer::Initialize()
         return;
     }
 
-    // В OpenGL Core Profile VAO нужен даже тогда,
-    // когда vertex buffer не используется.
-    //
-    // Вершины fullscreen triangle создаются в vertex shader
-    // через gl_VertexID.
     glGenVertexArrays(1, &m_nFullscreenVao);
 }
 
@@ -120,48 +228,106 @@ const SGridStyle& CGridRenderer::GetStyle() const
     return m_sStyle;
 }
 
+void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
+{
+    if (!m_sStyle.bUseAdaptiveStep)
+    {
+        return;
+    }
+
+    const double dPixelsPerUnitX = ComputePixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        m_sGeometry.vOrigin,
+        m_sGeometry.vAxisX,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitY = ComputePixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        m_sGeometry.vOrigin,
+        m_sGeometry.vAxisY,
+        sFrameData.vViewportSize
+    );
+
+    double dPixelsPerWorldUnit = 0.0;
+
+    if (dPixelsPerUnitX > 0.0 && dPixelsPerUnitY > 0.0)
+    {
+        dPixelsPerWorldUnit = std::min(dPixelsPerUnitX, dPixelsPerUnitY);
+    }
+    else
+    {
+        dPixelsPerWorldUnit = std::max(dPixelsPerUnitX, dPixelsPerUnitY);
+    }
+
+    if (!std::isfinite(dPixelsPerWorldUnit) || dPixelsPerWorldUnit <= 1e-9)
+    {
+        return;
+    }
+
+    const double dDesiredMinorStep =
+        m_sStyle.dTargetMinorStepPixels / dPixelsPerWorldUnit;
+
+    const double dMinorStep = RoundUpToNiceStep(dDesiredMinorStep);
+
+    const int nMajorLineFrequency = std::max(m_sStyle.nMajorLineFrequency, 1);
+    const double dMajorStep = dMinorStep * static_cast<double>(nMajorLineFrequency);
+
+    m_sStyle.dMinorStep = dMinorStep;
+    m_sStyle.dMajorStep = dMajorStep;
+
+    const double dMinorStepPixels = dMinorStep * dPixelsPerWorldUnit;
+    const double dMajorStepPixels = dMajorStep * dPixelsPerWorldUnit;
+
+    // При adaptive step малый шаг уже подобран так, чтобы быть читаемым.
+    // Но оставляем защиту на случай экстремальных параметров.
+    m_sStyle.bShowMinorGrid = dMinorStepPixels >= 4.0;
+    m_sStyle.bShowMajorGrid = dMajorStepPixels >= 4.0;
+
+    // Оси остаются видимыми всегда.
+    m_sStyle.bShowAxes = true;
+}
+
 void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrameData& sFrameData) const
 {
     shaderProgram.Use();
-    // Матрицы и размер viewport.
+
     shaderProgram.SetUniformMat4d("uViewProj", sFrameData.mViewProj);
     shaderProgram.SetUniformMat4d("uInvViewProj", sFrameData.mInvViewProj);
-    shaderProgram.SetUniformVec2d("uViewportSize", sFrameData.vViewportSize);
-    // Геометрия сетки.
+
     shaderProgram.SetUniformVec3d("uGridOrigin", m_sGeometry.vOrigin);
     shaderProgram.SetUniformVec3d("uGridAxisX", m_sGeometry.vAxisX);
     shaderProgram.SetUniformVec3d("uGridAxisY", m_sGeometry.vAxisY);
     shaderProgram.SetUniformVec3d("uGridNormal", m_sGeometry.vNormal);
-    // Плохой угол обзора и режим глубины.
+
     shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
     shaderProgram.SetUniform1i("uClampDepth", m_sStyle.bClampDepth ? 1 : 0);
     shaderProgram.SetUniform1i("uDrawPlane", m_sStyle.bDrawPlane ? 1 : 0);
-    
-    // Infinite / bounded.
+
     shaderProgram.SetUniform1i("uIsBounded", m_sStyle.bIsBounded ? 1 : 0);
     shaderProgram.SetUniformVec4d("uGridBounds", m_sStyle.vBounds);
 
-    // Lines / dots.
     shaderProgram.SetUniform1i("uDrawDots", m_sStyle.bDrawDots ? 1 : 0);
+
+    shaderProgram.SetUniform1i("uShowMinorGrid", m_sStyle.bShowMinorGrid ? 1 : 0);
+    shaderProgram.SetUniform1i("uShowMajorGrid", m_sStyle.bShowMajorGrid ? 1 : 0);
+    shaderProgram.SetUniform1i("uShowAxes", m_sStyle.bShowAxes ? 1 : 0);
+
     shaderProgram.SetUniform1f("uDotRadius", m_sStyle.fDotRadius);
 
-    // Шаги.
     shaderProgram.SetUniform1d("uMinorStep", m_sStyle.dMinorStep);
     shaderProgram.SetUniform1d("uMajorStep", m_sStyle.dMajorStep);
 
-    // Толщины.
     shaderProgram.SetUniform1f("uMinorThickness", m_sStyle.fMinorThickness);
     shaderProgram.SetUniform1f("uMajorThickness", m_sStyle.fMajorThickness);
     shaderProgram.SetUniform1f("uAxisThickness", m_sStyle.fAxisThickness);
 
-    // Верхняя сторона.
     shaderProgram.SetUniformVec4f("uPlaneColorTop", m_sStyle.vPlaneColorTop);
     shaderProgram.SetUniformVec4f("uMinorColorTop", m_sStyle.vMinorColorTop);
     shaderProgram.SetUniformVec4f("uMajorColorTop", m_sStyle.vMajorColorTop);
     shaderProgram.SetUniformVec4f("uXAxisColorTop", m_sStyle.vXAxisColorTop);
     shaderProgram.SetUniformVec4f("uYAxisColorTop", m_sStyle.vYAxisColorTop);
 
-    // Нижняя сторона.
     shaderProgram.SetUniformVec4f("uPlaneColorBottom", m_sStyle.vPlaneColorBottom);
     shaderProgram.SetUniformVec4f("uMinorColorBottom", m_sStyle.vMinorColorBottom);
     shaderProgram.SetUniformVec4f("uMajorColorBottom", m_sStyle.vMajorColorBottom);
@@ -169,7 +335,5 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniformVec4f("uYAxisColorBottom", m_sStyle.vYAxisColorBottom);
 
     glBindVertexArray(m_nFullscreenVao);
-    // Один fullscreen triangle.
-    // Реальная сетка вычисляется во fragment shader.
     glDrawArrays(GL_TRIANGLES, 0, 3);
 }
