@@ -1,28 +1,50 @@
-cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.20)
 
-set(szProjectName CoordinateGridRendering)
-
-project(${szProjectName})
+project(CoordinateGridRendering LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Отключаем лишнюю сборку GLFW:
-# документацию, тесты, примеры и install target.
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+# Чтобы exe и папка shaders лежали рядом в Debug/Release.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release")
 
+# ------------------------------------------------------------------------------
+# External libraries
+# ------------------------------------------------------------------------------
+
+# GLFW.
+#
+# Ожидается, что GLFW лежит здесь:
+# external/glfw
 add_subdirectory(external/glfw)
-add_subdirectory(external/glad)
-add_subdirectory(external/glm)
 
-add_executable(${szProjectName}
+# GLAD.
+#
+# Ожидается, что GLAD лежит здесь:
+# external/glad
+add_subdirectory(external/glad)
+
+# GLM — header-only.
+#
+# Ожидается, что GLM лежит здесь:
+# external/glm
+set(GLM_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
+
+# ------------------------------------------------------------------------------
+# Sources
+# ------------------------------------------------------------------------------
+
+set(PROJECT_SOURCES
     src/main.cpp
 
-    src/OrbitCamera.h
-    src/OrbitCamera.cpp
+    src/Application.h
+    src/Application.cpp
+
+    src/GridPresets.h
+    src/GridPresets.cpp
 
     src/ShaderProgram.h
     src/ShaderProgram.cpp
@@ -30,9 +52,14 @@ add_executable(${szProjectName}
     src/GridRenderer.h
     src/GridRenderer.cpp
 
+    src/OrbitCamera.h
+    src/OrbitCamera.cpp
+
     src/AxisMarkerRenderer.h
     src/AxisMarkerRenderer.cpp
+)
 
+set(PROJECT_SHADERS
     shaders/fullscreen_triangle.vert
     shaders/grid.frag
 
@@ -40,67 +67,85 @@ add_executable(${szProjectName}
     shaders/axis_marker.frag
 )
 
-# Чтобы Visual Studio сразу запускала основной проект,
-# а не вспомогательные цели вроде glfw/glad.
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${szProjectName})
+add_executable(${PROJECT_NAME}
+    ${PROJECT_SOURCES}
+    ${PROJECT_SHADERS}
+)
 
-target_link_libraries(${szProjectName}
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${GLM_INCLUDE_DIR}"
+)
+
+target_link_libraries(${PROJECT_NAME}
     PRIVATE
         glfw
         glad
-        glm
 )
 
-target_include_directories(${szProjectName}
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
+# ------------------------------------------------------------------------------
+# Visual Studio filters
+# ------------------------------------------------------------------------------
 
-# Группировка файлов в Visual Studio Solution Explorer.
 source_group("Source Files" FILES
     src/main.cpp
-
-    src/OrbitCamera.h
-    src/OrbitCamera.cpp
-
-    src/ShaderProgram.h
+    src/Application.cpp
+    src/GridPresets.cpp
     src/ShaderProgram.cpp
-
-    src/GridRenderer.h
     src/GridRenderer.cpp
-
-    src/AxisMarkerRenderer.h
+    src/OrbitCamera.cpp
     src/AxisMarkerRenderer.cpp
 )
 
+source_group("Header Files" FILES
+    src/Application.h
+    src/GridPresets.h
+    src/ShaderProgram.h
+    src/GridRenderer.h
+    src/OrbitCamera.h
+    src/AxisMarkerRenderer.h
+)
+
 source_group("Shaders" FILES
-    shaders/fullscreen_triangle.vert
-    shaders/grid.frag
-
-    shaders/axis_marker.vert
-    shaders/axis_marker.frag
+    ${PROJECT_SHADERS}
 )
 
-# Шейдеры должны отображаться в Solution Explorer,
-# но не должны компилироваться как C++-файлы.
-set_source_files_properties(
-    shaders/fullscreen_triangle.vert
-    shaders/grid.frag
+# ------------------------------------------------------------------------------
+# Shader copy
+# ------------------------------------------------------------------------------
 
-    shaders/axis_marker.vert
-    shaders/axis_marker.frag
-
-    PROPERTIES
-        HEADER_FILE_ONLY TRUE
-)
-
-# Копируем папку shaders рядом с exe.
+# Копируем shaders рядом с exe.
 #
-# Для Visual Studio multi-config generator получится:
-# build/Debug/shaders
-# build/Release/shaders
-add_custom_command(TARGET ${szProjectName} POST_BUILD
+# Это нужно, потому что приложение грузит shader'ы по относительным путям:
+# shaders/fullscreen_triangle.vert
+# shaders/grid.frag
+# shaders/axis_marker.vert
+# shaders/axis_marker.frag
+add_custom_command(
+    TARGET ${PROJECT_NAME}
+    POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaders
-        $<TARGET_FILE_DIR:${szProjectName}>/shaders
+        "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
+    COMMENT "Copying shaders to output directory"
 )
+
+# ------------------------------------------------------------------------------
+# Compiler warnings
+# ------------------------------------------------------------------------------
+
+if (MSVC)
+    target_compile_options(${PROJECT_NAME}
+        PRIVATE
+            /W4
+            /permissive-
+    )
+else()
+    target_compile_options(${PROJECT_NAME}
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
+endif()
