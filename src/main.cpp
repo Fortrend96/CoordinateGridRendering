@@ -917,9 +917,22 @@ int main()
         // и выбирает красивый шаг вида 1/2/5 * 10^n.
         gridRenderer.UpdateAdaptiveStep(sFrameData);
 
-        // Рисуем сетку fullscreen triangle'ом.
-        // Реальная логика сетки находится в vertex/fragment shader.
+        // Сетка должна взаимодействовать с моделью через Z-test,
+        // но не должна записывать свою глубину в depth buffer.
+        //
+        // Поэтому:
+        // - GL_DEPTH_TEST остаётся включённым;
+        // - gl_FragDepth в shader'е считается;
+        // - запись в depth buffer временно отключаем через glDepthMask(GL_FALSE).
+        //
+        // Если перед сеткой уже нарисованы модельные объекты,
+        // то сетка будет корректно скрываться за ними.
+        // При этом сама сетка не испортит depth buffer для последующих pass'ов.
+        glDepthMask(GL_FALSE);
+
         gridRenderer.Render(gridShaderProgram, sFrameData);
+
+        glDepthMask(GL_TRUE);
 
         axisMarkerRenderer.Render(
             axisMarkerShaderProgram,

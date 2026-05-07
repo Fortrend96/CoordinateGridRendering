@@ -13,11 +13,11 @@ noperspective in vec3 vNearLocal;
 noperspective in vec3 vFarLocal;
 
 // -----------------------------------------------------------------------------
-// Матрицы и параметры viewport
+// Матрицы
 // -----------------------------------------------------------------------------
 
 // View-projection матрица.
-// Нужна для вычисления настоящей глубины точки сетки.
+// Нужна для вычисления настоящей глубины фрагмента сетки.
 uniform dmat4 uViewProj;
 
 // -----------------------------------------------------------------------------
@@ -28,45 +28,48 @@ uniform dmat4 uViewProj;
 uniform dvec3 uGridOrigin;
 
 // Ось X сетки в world-space.
-// Предполагаем, что нормализована.
+// Ожидается, что нормализована.
 uniform dvec3 uGridAxisX;
 
 // Ось Y сетки в world-space.
-// Предполагаем, что нормализована.
+// Ожидается, что нормализована.
 uniform dvec3 uGridAxisY;
 
 // Нормаль плоскости сетки в world-space.
-// Предполагаем, что нормализована.
+// Ожидается, что нормализована.
 uniform dvec3 uGridNormal;
 
-// Если abs(dot(rayDir, normal)) меньше этого значения,
-// сетку не рисуем: взгляд почти вдоль плоскости.
+// Минимально допустимый abs(dot(rayDir, normal)).
+//
+// Если значение меньше, значит мы смотрим почти вдоль плоскости.
+// В таком случае сетка может выглядеть коряво, поэтому гасим её заранее.
 uniform double uMinViewNormalDot;
 
 // -----------------------------------------------------------------------------
 // Режимы отображения
 // -----------------------------------------------------------------------------
 
-// false — depth за near/far отбрасываем;
-// true  — depth прижимаем к [0; 1].
+// false — фрагменты за near/far отбрасываются;
+// true  — depth прижимается к [0; 1].
 uniform bool uClampDepth;
 
 // false — рисуем только линии/оси;
-// true  — дополнительно заливаем плоскость сетки.
+// true  — дополнительно рисуем заливку плоскости сетки.
 uniform bool uDrawPlane;
 
-// Ограниченная / бесконечная сетка.
+// false — сетка бесконечная;
+// true  — сетка ограничена прямоугольником uGridBounds.
 uniform bool uIsBounded;
 
-// Границы ограниченной сетки в локальной СК:
-// x = minX
-// y = minY
-// z = maxX
-// w = maxY
+// Границы bounded-сетки в локальной СК:
+// x = minX,
+// y = minY,
+// z = maxX,
+// w = maxY.
 uniform dvec4 uGridBounds;
 
 // false — рисуем линии;
-// true  — рисуем точки в узлах.
+// true  — рисуем точки в узлах сетки.
 uniform bool uDrawDots;
 
 // Показывать малую сетку.
@@ -83,11 +86,9 @@ uniform bool uShowAxes;
 // -----------------------------------------------------------------------------
 
 // Малый шаг сетки.
-// Теперь он может быть адаптивным и меняться при zoom.
 uniform double uMinorStep;
 
 // Большой шаг сетки.
-// Обычно равен uMinorStep * 10.
 uniform double uMajorStep;
 
 // Толщина малых линий.
@@ -99,7 +100,7 @@ uniform float uMajorThickness;
 // Толщина осей.
 uniform float uAxisThickness;
 
-// Радиус точек в режиме dots.
+// Радиус точек в dots-режиме.
 uniform float uDotRadius;
 
 // -----------------------------------------------------------------------------
@@ -161,20 +162,24 @@ float CreateDotMask(
 void main()
 {
     // -------------------------------------------------------------------------
-    // 1. Луч камеры в локальных координатах сетки
+    // 1. Луч камеры в координатах относительно origin сетки
     // -------------------------------------------------------------------------
 
-    // Эти точки уже были восстановлены в vertex shader.
-    // Здесь мы больше не делаем uInvViewProj * clip per-pixel.
+    // Эти точки уже восстановлены в vertex shader.
+    //
+    // Важно:
+    // vertex shader сначала делает world - uGridOrigin в double,
+    // и только потом передаёт локальные значения дальше.
+    // Так мы уменьшаем влияние больших мировых координат.
     dvec3 rayOriginLocal = dvec3(vNearLocal);
     dvec3 rayFarLocal = dvec3(vFarLocal);
 
     dvec3 rayDir = normalize(rayFarLocal - rayOriginLocal);
 
-    // Плоскость сетки в локальных координатах проходит через (0, 0, 0),
-    // потому что мы работаем относительно uGridOrigin.
+    // В локальной системе относительно origin плоскость сетки проходит через 0.
     double denom = dot(rayDir, uGridNormal);
 
+    // Гашение сетки при почти касательном взгляде.
     if (abs(denom) < uMinViewNormalDot)
     {
         discard;
@@ -195,12 +200,13 @@ void main()
     dvec3 localPos = rayOriginLocal + rayDir * t;
 
     // -------------------------------------------------------------------------
-    // 2. Локальные координаты сетки
+    // 2. Координаты точки в локальной СК сетки
     // -------------------------------------------------------------------------
 
     double gx = dot(localPos, uGridAxisX);
     double gy = dot(localPos, uGridAxisY);
 
+    // Ограничение bounded-сетки.
     if (uIsBounded)
     {
         if (
@@ -215,7 +221,7 @@ void main()
     }
 
     // -------------------------------------------------------------------------
-    // 3. Расстояния до линий
+    // 3. Расстояния до линий сетки
     // -------------------------------------------------------------------------
 
     double dxMinor = DistanceToGridLine(gx, uMinorStep);
@@ -227,11 +233,14 @@ void main()
     float fgx = float(gx);
     float fgy = float(gy);
 
+    // fwidth показывает изменение локальной координаты между соседними пикселями.
+    // Через него делаем линии стабильными по экранной толщине.
     float fx = max(fwidth(fgx), 1e-6);
     float fy = max(fwidth(fgy), 1e-6);
 
     float minorMask = 0.0;
     float majorMask = 0.0;
+    float boundaryMask = 0.0;
     float xAxisMask = 0.0;
     float yAxisMask = 0.0;
 
@@ -243,6 +252,10 @@ void main()
 
     if (uDrawDots)
     {
+        // Режим точек.
+        //
+        // При этом оси и bounded-рамка остаются линиями,
+        // чтобы направление и границы были читаемыми.
         if (uShowMinorGrid)
         {
             minorMask = CreateDotMask(
@@ -273,6 +286,7 @@ void main()
     }
     else
     {
+        // Режим линий.
         if (uShowMinorGrid)
         {
             float minorX = CreateLineMask(dxMinor, fx, uMinorThickness);
@@ -295,7 +309,31 @@ void main()
     }
 
     // -------------------------------------------------------------------------
-    // 4. Цвета
+    // 4. Граничный прямоугольник bounded-сетки
+    // -------------------------------------------------------------------------
+
+    if (uIsBounded)
+    {
+        // Рисуем рамку ограниченной сетки.
+        //
+        // Леонид предложил взять цвет/толщину от больших линий
+        // или вынести отдельным параметром. На этом шаге берём major style.
+        //
+        // Так как выше уже был discard вне bounds,
+        // эти четыре линии будут видны только по периметру прямоугольника.
+        float boundaryMinX = CreateLineMask(abs(gx - uGridBounds.x), fx, uMajorThickness);
+        float boundaryMaxX = CreateLineMask(abs(gx - uGridBounds.z), fx, uMajorThickness);
+        float boundaryMinY = CreateLineMask(abs(gy - uGridBounds.y), fy, uMajorThickness);
+        float boundaryMaxY = CreateLineMask(abs(gy - uGridBounds.w), fy, uMajorThickness);
+
+        boundaryMask = max(
+            max(boundaryMinX, boundaryMaxX),
+            max(boundaryMinY, boundaryMaxY)
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. Выбор цветов top/bottom
     // -------------------------------------------------------------------------
 
     bool isTopSide = denom < 0.0;
@@ -306,7 +344,13 @@ void main()
     vec4 xAxisColor = isTopSide ? uXAxisColorTop : uXAxisColorBottom;
     vec4 yAxisColor = isTopSide ? uYAxisColorTop : uYAxisColorBottom;
 
-    float gridMask = max(max(minorMask, majorMask), max(xAxisMask, yAxisMask));
+    // Цвет рамки bounded-сетки пока берём от major-линий.
+    vec4 boundaryColor = majorColor;
+
+    float gridMask = max(
+        max(minorMask, majorMask),
+        max(max(boundaryMask, xAxisMask), yAxisMask)
+    );
 
     if (!uDrawPlane && gridMask <= 0.001)
     {
@@ -317,8 +361,11 @@ void main()
         ? planeColor
         : vec4(0.0, 0.0, 0.0, 0.0);
 
+    // Приоритет:
+    // plane -> minor -> major -> boundary -> axes.
     color = mix(color, minorColor, minorMask);
     color = mix(color, majorColor, majorMask);
+    color = mix(color, boundaryColor, boundaryMask);
     color = mix(color, xAxisColor, xAxisMask);
     color = mix(color, yAxisColor, yAxisMask);
 
@@ -328,7 +375,7 @@ void main()
     }
 
     // -------------------------------------------------------------------------
-    // 5. Глубина
+    // 6. Глубина фрагмента сетки
     // -------------------------------------------------------------------------
 
     dvec3 worldPos = uGridOrigin + localPos;
@@ -336,6 +383,8 @@ void main()
     dvec4 clip = uViewProj * dvec4(worldPos, 1.0);
     double ndcZ = clip.z / clip.w;
 
+    // OpenGL NDC z: [-1, 1]
+    // Depth buffer: [0, 1]
     double depth = ndcZ * 0.5 + 0.5;
 
     if (uClampDepth)
@@ -350,6 +399,13 @@ void main()
         }
     }
 
+    // Важно:
+    // сетка вычисляет свою глубину аналитически.
+    //
+    // А запись в depth buffer должна быть отключена со стороны OpenGL
+    // через glDepthMask(GL_FALSE), чтобы сетка участвовала в Z-test,
+    // но не портила depth buffer сцены.
     gl_FragDepth = float(depth);
+
     outColor = color;
 }
