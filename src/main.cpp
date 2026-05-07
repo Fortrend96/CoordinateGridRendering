@@ -152,29 +152,33 @@ static glm::dvec2 GetCursorNdc(GLFWwindow* pWindow)
 // - perspective — основной 3D-режим;
 // - orthographic — CAD-like режим без перспективных искажений.
 //
-// Near/far передаются параметрами, потому что они рассчитываются динамически
-// и должны быть одинаковыми для основного render loop и zoom-to-cursor.
+// Важно для orthographic:
+// в ортографической проекции расстояние камеры само по себе не меняет масштаб.
+// Поэтому используем dOrthographicHalfHeight как zoom-параметр.
+// Чем меньше dOrthographicHalfHeight, тем сильнее приближение.
 static glm::dmat4 CreateProjectionMatrix(
     bool bUseOrthographicProjection,
     double dAspect,
     double dNearPlane,
-    double dFarPlane
+    double dFarPlane,
+    double dOrthographicHalfHeight
 )
 {
     if (bUseOrthographicProjection)
     {
-        // Тестовый ортографический режим.
-        //
-        // Размер области пока фиксированный. Для полноценного CAD-like
-        // orthographic zoom в будущем лучше связать его с distance/zoom камеры.
-        const double dHalfHeight = 18.0;
-        const double dHalfWidth = dHalfHeight * dAspect;
+        const double dSafeHalfHeight = std::clamp(
+            dOrthographicHalfHeight,
+            0.0001,
+            1000000000.0
+        );
+
+        const double dHalfWidth = dSafeHalfHeight * dAspect;
 
         return glm::ortho(
             -dHalfWidth,
             dHalfWidth,
-            -dHalfHeight,
-            dHalfHeight,
+            -dSafeHalfHeight,
+            dSafeHalfHeight,
             dNearPlane,
             dFarPlane
         );
@@ -220,11 +224,16 @@ static bool TryGetCursorGridPoint(
 
     const glm::dmat4 mView = camera.GetViewMatrix();
 
+    // В orthographic режиме используем distance камеры как zoom scale.
+    // Это делает колесо мыши рабочим и для ортографической проекции.
+    const double dOrthographicHalfHeight = camera.GetDistance();
+
     const glm::dmat4 mProjection = CreateProjectionMatrix(
         bUseOrthographicProjection,
         dAspect,
         dNearPlane,
-        dFarPlane
+        dFarPlane,
+        dOrthographicHalfHeight
     );
 
     const glm::dmat4 mViewProj = mProjection * mView;
@@ -653,8 +662,8 @@ int main()
     // - плоскость XY видна сверху;
     // - режим похож на AutoCAD Top View.
     //
-    // Берём pitch не ровно 90°, а 89.9°,
-    // чтобы избежать вырожденного случая в lookAt/cross product.
+    // Если в конкретной реализации COrbitCamera этот pitch даёт не top view,
+    // нужно будет подправить yaw/pitch в одном месте здесь.
     const double dDefaultCameraDistance = 24.0;
     const double dDefaultCameraYawRadians = glm::radians(0.0);
     const double dDefaultCameraPitchRadians = glm::radians(89.9);
@@ -846,11 +855,17 @@ int main()
             dFarPlane
         );
 
+        // В perspective расстояние камеры влияет на масштаб естественно.
+        // В orthographic — нет, поэтому используем distance как размер
+        // половины видимой области по высоте.
+        const double dOrthographicHalfHeight = camera.GetDistance();
+
         const glm::dmat4 mProjection = CreateProjectionMatrix(
             bUseOrthographicProjection,
             dAspect,
             dNearPlane,
-            dFarPlane
+            dFarPlane,
+            dOrthographicHalfHeight
         );
 
         // OpenGL convention:

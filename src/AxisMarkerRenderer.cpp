@@ -336,32 +336,69 @@ namespace
         }
     }
 
-    // Определяет, какую ось нужно скрыть в orthographic-режиме.
+    // Определяет, какую ось скрыть в orthographic-режиме,
+    // по экранной длине её проекции.
     //
-    // Скрывается та ось, которая наиболее параллельна направлению взгляда.
-    // Это даёт AutoCAD-like поведение:
-    // - Top/Bottom view: скрываем Z;
-    // - Front/Back view: скрываем Y;
-    // - Left/Right view: скрываем X.
+    // Это надёжнее, чем сравнивать dot(viewDirection, axis),
+    // потому что конкретная OrbitCamera может иметь свою интерпретацию yaw/pitch.
+    //
+    // Логика:
+    // - проецируем origin;
+    // - проецируем origin + X/Y/Z;
+    // - считаем экранную длину каждой оси;
+    // - ось с минимальной экранной длиной почти направлена в камеру;
+    // - её скрываем.
     EAxisMarkerAxis ChooseHiddenAxisForOrthographicView(
-        const SGridGeometry& sGridGeometry,
-        const glm::dvec3& vCameraViewDirection
+        const SGridFrameData& sFrameData,
+        const SGridGeometry& sGridGeometry
     )
     {
-        const glm::dvec3 vAxisX = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::X);
-        const glm::dvec3 vAxisY = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::Y);
-        const glm::dvec3 vAxisZ = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::Z);
+        auto fnGetAxisScreenLength = [&](
+            EAxisMarkerAxis eAxis
+            ) -> double
+            {
+                const glm::dvec3 vAxisDirection = GetAxisDirection(
+                    sGridGeometry,
+                    eAxis
+                );
 
-        const double dDotX = std::abs(glm::dot(vCameraViewDirection, vAxisX));
-        const double dDotY = std::abs(glm::dot(vCameraViewDirection, vAxisY));
-        const double dDotZ = std::abs(glm::dot(vCameraViewDirection, vAxisZ));
+                glm::dvec2 vScreenOrigin(0.0);
+                glm::dvec2 vScreenAxisPoint(0.0);
 
-        if (dDotX >= dDotY && dDotX >= dDotZ)
+                const bool bOriginProjected = ProjectLocalPointToScreen(
+                    sFrameData.mViewProj,
+                    sGridGeometry.vOrigin,
+                    glm::dvec3(0.0, 0.0, 0.0),
+                    sFrameData.vViewportSize,
+                    vScreenOrigin
+                );
+
+                const bool bAxisProjected = ProjectLocalPointToScreen(
+                    sFrameData.mViewProj,
+                    sGridGeometry.vOrigin,
+                    vAxisDirection,
+                    sFrameData.vViewportSize,
+                    vScreenAxisPoint
+                );
+
+                if (!bOriginProjected || !bAxisProjected)
+                {
+                    return 0.0;
+                }
+
+                return glm::length(vScreenAxisPoint - vScreenOrigin);
+            };
+
+        const double dScreenLengthX = fnGetAxisScreenLength(EAxisMarkerAxis::X);
+        const double dScreenLengthY = fnGetAxisScreenLength(EAxisMarkerAxis::Y);
+        const double dScreenLengthZ = fnGetAxisScreenLength(EAxisMarkerAxis::Z);
+
+        if (dScreenLengthX <= dScreenLengthY && dScreenLengthX <= dScreenLengthZ)
         {
             return EAxisMarkerAxis::X;
         }
 
-        if (dDotY >= dDotX && dDotY >= dDotZ)
+        if (dScreenLengthY <= dScreenLengthX && dScreenLengthY <= dScreenLengthZ)
         {
             return EAxisMarkerAxis::Y;
         }
@@ -788,9 +825,12 @@ void CAxisMarkerRenderer::RenderOrthographicMarker(
         vCameraViewDirection
     );
 
+    // В orthographic-режиме скрываем ту ось,
+    // которая почти не имеет экранной длины.
+    // Это соответствует AutoCAD-like UCS icon.
     const EAxisMarkerAxis eHiddenAxis = ChooseHiddenAxisForOrthographicView(
-        sGridGeometry,
-        vCameraViewDirection
+        sFrameData,
+        sGridGeometry
     );
 
     const double dPixelsPerUnitBillboardRight = GetPixelsPerWorldUnit(
