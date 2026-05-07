@@ -49,9 +49,21 @@ uniform double uMinViewNormalDot;
 // Режимы отображения
 // -----------------------------------------------------------------------------
 
-// false — фрагменты за near/far отбрасываются;
-// true  — depth прижимается к [0; 1].
+// Ручной clamp глубины.
+// Если true, depth прижимается к безопасному диапазону.
+// Если false, фрагменты вне depth range отбрасываются.
 uniform bool uClampDepth;
+
+// Безопасный отступ от границ depth buffer.
+// Вместо clamp(depth, 0.0, 1.0) используем:
+// clamp(depth, epsilon, 1.0 - epsilon).
+uniform double uSafeDepthEpsilon;
+
+// Отладочный режим зон глубины.
+// В этом режиме линии/точки сетки не рисуются,
+// а плоскость красится по зонам:
+// near / normal / far.
+uniform bool uDebugDepthZones;
 
 // false — рисуем только линии/оси;
 // true  — дополнительно рисуем заливку плоскости сетки.
@@ -316,8 +328,9 @@ void main()
     {
         // Рисуем рамку ограниченной сетки.
         //
-        // Леонид предложил взять цвет/толщину от больших линий
-        // или вынести отдельным параметром. На этом шаге берём major style.
+        // Цвет и толщину на этом шаге берём от больших линий.
+        // Позже при необходимости можно вынести отдельные uniform-параметры:
+        // borderColorTop/bottom и borderThickness.
         //
         // Так как выше уже был discard вне bounds,
         // эти четыре линии будут видны только по периметру прямоугольника.
@@ -352,7 +365,7 @@ void main()
         max(max(boundaryMask, xAxisMask), yAxisMask)
     );
 
-    if (!uDrawPlane && gridMask <= 0.001)
+    if (!uDrawPlane && gridMask <= 0.001 && !uDebugDepthZones)
     {
         discard;
     }
@@ -369,7 +382,7 @@ void main()
     color = mix(color, xAxisColor, xAxisMask);
     color = mix(color, yAxisColor, yAxisMask);
 
-    if (color.a <= 0.001)
+    if (color.a <= 0.001 && !uDebugDepthZones)
     {
         discard;
     }
@@ -385,18 +398,76 @@ void main()
 
     // OpenGL NDC z: [-1, 1]
     // Depth buffer: [0, 1]
-    double depth = ndcZ * 0.5 + 0.5;
+    double rawDepth = ndcZ * 0.5 + 0.5;
+
+    // Безопасный внутренний диапазон depth buffer.
+    //
+    // Не используем ровно 0.0 и 1.0, потому что на некоторых драйверах
+    // фрагменты на самой границе могут быть отрезаны.
+    double safeMinDepth = uSafeDepthEpsilon;
+    double safeMaxDepth = 1.0 - uSafeDepthEpsilon;
+
+    // Страховка от некорректного epsilon.
+    safeMinDepth = clamp(safeMinDepth, 0.0, 0.499999);
+    safeMaxDepth = clamp(safeMaxDepth, 0.500001, 1.0);
+
+    // Определяем зону глубины до clamp.
+    //
+    // Это удобно для отладки:
+    // - near zone: точка пересечения ушла перед near plane;
+    // - normal zone: точка в нормальном диапазоне сцены;
+    // - far zone: точка ушла за far plane.
+    bool bNearDepthZone = rawDepth < safeMinDepth;
+    bool bFarDepthZone = rawDepth > safeMaxDepth;
+    bool bNormalDepthZone = !bNearDepthZone && !bFarDepthZone;
+
+    double depth = rawDepth;
 
     if (uClampDepth)
     {
-        depth = clamp(depth, 0.0, 1.0);
+        // Ручной depth clamp.
+        //
+        // Фрагмент не отбрасываем, а прижимаем его глубину
+        // к безопасному внутреннему диапазону.
+        depth = clamp(rawDepth, safeMinDepth, safeMaxDepth);
     }
     else
     {
-        if (depth < 0.0 || depth > 1.0)
+        // Старое поведение для сравнения:
+        // если depth вне диапазона — фрагмент отбрасывается.
+        if (rawDepth < safeMinDepth || rawDepth > safeMaxDepth)
         {
             discard;
         }
+    }
+
+    // Отладочный режим раскраски зон.
+    //
+    // В этом режиме временно игнорируем линии/точки сетки.
+    // Это помогает увидеть, какая часть плоскости сетки:
+    // - прижалась к near;
+    // - находится в нормальном диапазоне;
+    // - прижалась к far.
+    if (uDebugDepthZones)
+    {
+        if (bNearDepthZone)
+        {
+            // Красный: фрагменты перед near plane.
+            outColor = vec4(1.0, 0.1, 0.1, 0.85);
+        }
+        else if (bFarDepthZone)
+        {
+            // Синий: фрагменты за far plane.
+            outColor = vec4(0.1, 0.25, 1.0, 0.85);
+        }
+        else
+        {
+            // Зелёный: нормальный диапазон глубины.
+            outColor = vec4(0.1, 0.9, 0.25, 0.65);
+        }
+
+        gl_FragDepth = float(depth);
+        return;
     }
 
     // Важно:

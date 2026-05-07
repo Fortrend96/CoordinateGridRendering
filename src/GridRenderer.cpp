@@ -146,7 +146,21 @@ CGridRenderer::CGridRenderer()
     // сетка скрывается только при почти касательном взгляде.
     m_sStyle.dMinViewNormalDot = 0.005;
 
-    m_sStyle.bClampDepth = false;
+    // По умолчанию включаем ручной clamp глубины.
+    // Это соответствует целевой логике: если фрагмент сетки выходит
+    // за near/far, он не отбрасывается, а прижимается к безопасной границе.
+    m_sStyle.bClampDepth = true;
+
+    // Безопасный отступ от точных 0 и 1 в depth buffer.
+    // Значение можно будет подбирать, если на конкретной видеокарте
+    // останутся артефакты на границах.
+    m_sStyle.dSafeDepthEpsilon = 0.000001;
+
+    // Отладочная раскраска зон глубины по умолчанию выключена.
+    m_sStyle.bDebugDepthZones = false;
+
+    // По умолчанию заливка плоскости выключена.
+    // Фон рисуется через glClearColor, а шейдер сетки выводит только линии.
     m_sStyle.bDrawPlane = false;
 
     m_sStyle.bIsBounded = false;
@@ -170,6 +184,9 @@ CGridRenderer::CGridRenderer()
     m_sStyle.bShowAxes = true;
 
     // Верхняя сторона.
+    //
+    // Это только дефолтные тестовые значения демо.
+    // В целевом варианте все цвета приходят снаружи и уходят в shader uniform'ами.
     m_sStyle.vPlaneColorTop = glm::vec4(0.145f, 0.176f, 0.223f, 1.00f);
     m_sStyle.vMinorColorTop = glm::vec4(0.215f, 0.250f, 0.305f, 0.72f);
     m_sStyle.vMajorColorTop = glm::vec4(0.305f, 0.355f, 0.430f, 0.92f);
@@ -346,7 +363,11 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniformVec3d("uGridNormal", m_sGeometry.vNormal);
 
     shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
+
     shaderProgram.SetUniform1i("uClampDepth", m_sStyle.bClampDepth ? 1 : 0);
+    shaderProgram.SetUniform1d("uSafeDepthEpsilon", m_sStyle.dSafeDepthEpsilon);
+    shaderProgram.SetUniform1i("uDebugDepthZones", m_sStyle.bDebugDepthZones ? 1 : 0);
+
     shaderProgram.SetUniform1i("uDrawPlane", m_sStyle.bDrawPlane ? 1 : 0);
 
     shaderProgram.SetUniform1i("uIsBounded", m_sStyle.bIsBounded ? 1 : 0);

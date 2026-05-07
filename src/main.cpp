@@ -542,8 +542,9 @@ static void PrintControls()
     std::cout << "  P                                  : toggle perspective/orthographic projection\n";
     std::cout << "  B                                  : toggle infinite/bounded grid\n";
     std::cout << "  M                                  : toggle lines/dots mode\n";
-    std::cout << "  C                                  : toggle depth clamp\n";
+    std::cout << "  C                                  : toggle manual depth clamp\n";
     std::cout << "  F                                  : toggle grid plane fill\n";
+    std::cout << "  G                                  : toggle depth zones debug view\n";
     std::cout << "  1                                  : simple grid\n";
     std::cout << "  2                                  : large offset grid\n";
     std::cout << "  3                                  : rotated grid\n";
@@ -661,9 +662,6 @@ int main()
     // - камера смотрит на origin сетки;
     // - плоскость XY видна сверху;
     // - режим похож на AutoCAD Top View.
-    //
-    // Если в конкретной реализации COrbitCamera этот pitch даёт не top view,
-    // нужно будет подправить yaw/pitch в одном месте здесь.
     const double dDefaultCameraDistance = 24.0;
     const double dDefaultCameraYawRadians = glm::radians(0.0);
     const double dDefaultCameraPitchRadians = glm::radians(89.9);
@@ -697,6 +695,7 @@ int main()
     bool bWasMPressed = false;
     bool bWasCPressed = false;
     bool bWasFPressed = false;
+    bool bWasGPressed = false;
 
     auto fnSetPreset = [&](EGridPreset eNewPreset)
         {
@@ -722,6 +721,7 @@ int main()
     std::cout << "Grid mode: " << (sGridStyle.bDrawDots ? "dots" : "lines") << '\n';
     std::cout << "Depth clamp: " << (sGridStyle.bClampDepth ? "enabled" : "disabled") << '\n';
     std::cout << "Grid plane fill: " << (sGridStyle.bDrawPlane ? "enabled" : "disabled") << '\n';
+    std::cout << "Depth zones debug: " << (sGridStyle.bDebugDepthZones ? "enabled" : "disabled") << '\n';
 
     while (!glfwWindowShouldClose(pWindow))
     {
@@ -828,6 +828,20 @@ int main()
 
         bWasFPressed = bIsFPressed;
 
+        const bool bIsGPressed = glfwGetKey(pWindow, GLFW_KEY_G) == GLFW_PRESS;
+
+        if (bIsGPressed && !bWasGPressed)
+        {
+            sGridStyle.bDebugDepthZones = !sGridStyle.bDebugDepthZones;
+            gridRenderer.SetStyle(sGridStyle);
+
+            std::cout << "Depth zones debug: "
+                << (sGridStyle.bDebugDepthZones ? "enabled" : "disabled")
+                << '\n';
+        }
+
+        bWasGPressed = bIsGPressed;
+
         int nFramebufferWidth = 0;
         int nFramebufferHeight = 0;
 
@@ -917,23 +931,20 @@ int main()
         // и выбирает красивый шаг вида 1/2/5 * 10^n.
         gridRenderer.UpdateAdaptiveStep(sFrameData);
 
-        // Сетка должна взаимодействовать с моделью через Z-test,
+        // Сетка должна участвовать в Z-test,
         // но не должна записывать свою глубину в depth buffer.
         //
-        // Поэтому:
-        // - GL_DEPTH_TEST остаётся включённым;
-        // - gl_FragDepth в shader'е считается;
-        // - запись в depth buffer временно отключаем через glDepthMask(GL_FALSE).
-        //
-        // Если перед сеткой уже нарисованы модельные объекты,
-        // то сетка будет корректно скрываться за ними.
-        // При этом сама сетка не испортит depth buffer для последующих pass'ов.
+        // Это нужно, чтобы:
+        // - модельные объекты могли закрывать сетку;
+        // - сетка не портила depth buffer для последующих проходов.
         glDepthMask(GL_FALSE);
 
         gridRenderer.Render(gridShaderProgram, sFrameData);
 
         glDepthMask(GL_TRUE);
 
+        // Маркер начала координат пока оставляем как отдельную вспомогательную
+        // сущность демо-приложения. Он не является частью логики сетки.
         axisMarkerRenderer.Render(
             axisMarkerShaderProgram,
             sFrameData,
