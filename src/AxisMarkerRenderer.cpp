@@ -336,16 +336,118 @@ namespace
         }
     }
 
+    // Возвращает экранную длину проекции оси маркера.
+    //
+    // Используется для определения:
+    // - какая ось почти направлена в камеру;
+    // - похож ли текущий orthographic view на один из классических CAD-видов.
+    double GetAxisScreenLength(
+        const SGridFrameData& sFrameData,
+        const SGridGeometry& sGridGeometry,
+        EAxisMarkerAxis eAxis
+    )
+    {
+        const glm::dvec3 vAxisDirection = GetAxisDirection(
+            sGridGeometry,
+            eAxis
+        );
+
+        glm::dvec2 vScreenOrigin(0.0);
+        glm::dvec2 vScreenAxisPoint(0.0);
+
+        const bool bOriginProjected = ProjectLocalPointToScreen(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            glm::dvec3(0.0, 0.0, 0.0),
+            sFrameData.vViewportSize,
+            vScreenOrigin
+        );
+
+        const bool bAxisProjected = ProjectLocalPointToScreen(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            vAxisDirection,
+            sFrameData.vViewportSize,
+            vScreenAxisPoint
+        );
+
+        if (!bOriginProjected || !bAxisProjected)
+        {
+            return 0.0;
+        }
+
+        return glm::length(vScreenAxisPoint - vScreenOrigin);
+    }
+
+    // Проверяет, похож ли текущий orthographic view на один из классических
+    // осевых CAD-видов: Top/Bottom, Front/Back, Left/Right.
+    //
+    // Важно:
+    // orthographic projection сама по себе НЕ означает, что надо скрывать одну ось.
+    // Пользователь может вращать камеру в ортографической проекции.
+    // В таком случае нужно рисовать обычный 3D-маркер, иначе одна из осей будет
+    // внезапно исчезать при вращении камеры.
+    //
+    // Поэтому плоский AutoCAD-like UCS marker включаем только тогда,
+    // когда одна из осей почти направлена в камеру.
+    bool IsPrincipalOrthographicView(
+        const SGridFrameData& sFrameData,
+        const SGridGeometry& sGridGeometry
+    )
+    {
+        const double dScreenLengthX = GetAxisScreenLength(
+            sFrameData,
+            sGridGeometry,
+            EAxisMarkerAxis::X
+        );
+
+        const double dScreenLengthY = GetAxisScreenLength(
+            sFrameData,
+            sGridGeometry,
+            EAxisMarkerAxis::Y
+        );
+
+        const double dScreenLengthZ = GetAxisScreenLength(
+            sFrameData,
+            sGridGeometry,
+            EAxisMarkerAxis::Z
+        );
+
+        const double dMinLength = std::min(
+            dScreenLengthX,
+            std::min(dScreenLengthY, dScreenLengthZ)
+        );
+
+        const double dMaxLength = std::max(
+            dScreenLengthX,
+            std::max(dScreenLengthY, dScreenLengthZ)
+        );
+
+        if (dMaxLength <= 1e-6)
+        {
+            return false;
+        }
+
+        // Если одна из осей спроецировалась почти в точку,
+        // значит камера смотрит почти вдоль этой оси.
+        //
+        // 0.08 означает: минимальная экранная длина оси меньше 8%
+        // от самой длинной экранной оси.
+        //
+        // Это достаточно строго, чтобы плоский UCS marker включался только
+        // в почти осевых видах, а не при произвольном вращении камеры.
+        const double dPrincipalViewThreshold = 0.08;
+
+        return (dMinLength / dMaxLength) < dPrincipalViewThreshold;
+    }
+
     // Определяет, какую ось скрыть в orthographic-режиме,
     // по экранной длине её проекции.
     //
-    // Это надёжнее, чем сравнивать dot(viewDirection, axis),
-    // потому что конкретная OrbitCamera может иметь свою интерпретацию yaw/pitch.
+    // Эта функция вызывается только для principal orthographic view.
     //
     // Логика:
-    // - проецируем origin;
-    // - проецируем origin + X/Y/Z;
-    // - считаем экранную длину каждой оси;
+    // - проецируем X/Y/Z;
     // - ось с минимальной экранной длиной почти направлена в камеру;
     // - её скрываем.
     EAxisMarkerAxis ChooseHiddenAxisForOrthographicView(
@@ -353,45 +455,23 @@ namespace
         const SGridGeometry& sGridGeometry
     )
     {
-        auto fnGetAxisScreenLength = [&](
-            EAxisMarkerAxis eAxis
-            ) -> double
-            {
-                const glm::dvec3 vAxisDirection = GetAxisDirection(
-                    sGridGeometry,
-                    eAxis
-                );
+        const double dScreenLengthX = GetAxisScreenLength(
+            sFrameData,
+            sGridGeometry,
+            EAxisMarkerAxis::X
+        );
 
-                glm::dvec2 vScreenOrigin(0.0);
-                glm::dvec2 vScreenAxisPoint(0.0);
+        const double dScreenLengthY = GetAxisScreenLength(
+            sFrameData,
+            sGridGeometry,
+            EAxisMarkerAxis::Y
+        );
 
-                const bool bOriginProjected = ProjectLocalPointToScreen(
-                    sFrameData.mViewProj,
-                    sGridGeometry.vOrigin,
-                    glm::dvec3(0.0, 0.0, 0.0),
-                    sFrameData.vViewportSize,
-                    vScreenOrigin
-                );
-
-                const bool bAxisProjected = ProjectLocalPointToScreen(
-                    sFrameData.mViewProj,
-                    sGridGeometry.vOrigin,
-                    vAxisDirection,
-                    sFrameData.vViewportSize,
-                    vScreenAxisPoint
-                );
-
-                if (!bOriginProjected || !bAxisProjected)
-                {
-                    return 0.0;
-                }
-
-                return glm::length(vScreenAxisPoint - vScreenOrigin);
-            };
-
-        const double dScreenLengthX = fnGetAxisScreenLength(EAxisMarkerAxis::X);
-        const double dScreenLengthY = fnGetAxisScreenLength(EAxisMarkerAxis::Y);
-        const double dScreenLengthZ = fnGetAxisScreenLength(EAxisMarkerAxis::Z);
+        const double dScreenLengthZ = GetAxisScreenLength(
+            sFrameData,
+            sGridGeometry,
+            EAxisMarkerAxis::Z
+        );
 
         if (dScreenLengthX <= dScreenLengthY && dScreenLengthX <= dScreenLengthZ)
         {
@@ -653,7 +733,27 @@ void CAxisMarkerRenderer::Render(
     const SGridGeometry& sGridGeometry
 ) const
 {
-    if (sFrameData.bIsOrthographicProjection)
+    // Бесшовная логика projection modes.
+    //
+    // Perspective:
+    //   всегда рисуем 3D-маркер X/Y/Z.
+    //
+    // Orthographic:
+    //   если камера почти в одном из классических CAD-видов
+    //   Top/Bottom/Front/Back/Left/Right, рисуем плоский UCS marker
+    //   и скрываем ось, направленную в камеру.
+    //
+    //   если камера повернута произвольно, НЕ скрываем ось и рисуем обычный
+    //   3D-маркер. Иначе при вращении в orthographic projection одна из осей
+    //   будет внезапно пропадать.
+    const bool bUseFlatOrthographicMarker =
+        sFrameData.bIsOrthographicProjection &&
+        IsPrincipalOrthographicView(
+            sFrameData,
+            sGridGeometry
+        );
+
+    if (bUseFlatOrthographicMarker)
     {
         RenderOrthographicMarker(
             shaderProgram,
@@ -825,7 +925,7 @@ void CAxisMarkerRenderer::RenderOrthographicMarker(
         vCameraViewDirection
     );
 
-    // В orthographic-режиме скрываем ту ось,
+    // В orthographic principal view скрываем ту ось,
     // которая почти не имеет экранной длины.
     // Это соответствует AutoCAD-like UCS icon.
     const EAxisMarkerAxis eHiddenAxis = ChooseHiddenAxisForOrthographicView(

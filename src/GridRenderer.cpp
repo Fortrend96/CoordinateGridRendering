@@ -6,6 +6,12 @@
 namespace
 {
     // Проецирует world-space точку в screen-space.
+    //
+    // Возвращает:
+    // - true, если точку удалось корректно спроецировать;
+    // - false, если clip.w слишком близок к нулю.
+    //
+    // Используется не для рендера, а для расчёта экранного масштаба сетки.
     bool ProjectWorldPointToScreen(
         const glm::dmat4& mViewProj,
         const glm::dvec3& vWorldPosition,
@@ -30,8 +36,16 @@ namespace
         return true;
     }
 
-    // Считает, сколько пикселей занимает 1 world unit
-    // в заданном направлении около origin сетки.
+    // Считает, сколько пикселей занимает 1 world unit около origin сетки
+    // в заданном направлении.
+    //
+    // Например:
+    // - берём origin;
+    // - берём origin + axisX;
+    // - проецируем обе точки на экран;
+    // - расстояние между ними в пикселях и есть pixelsPerWorldUnit.
+    //
+    // Это значение используется adaptive grid'ом для выбора шага сетки.
     double ComputePixelsPerWorldUnit(
         const glm::dmat4& mViewProj,
         const glm::dvec3& vOrigin,
@@ -66,12 +80,18 @@ namespace
         return glm::length(vScreenUnit - vScreenOrigin);
     }
 
-    // Округляет desiredStep вверх к красивому CAD-like значению:
+    // Округляет желаемый шаг вверх к красивому CAD-like значению.
+    //
+    // Используется шкала:
     //
     // ..., 0.1, 0.2, 0.5,
     // 1, 2, 5,
     // 10, 20, 50,
     // 100, ...
+    //
+    // Почему вверх:
+    // если округлять вниз, линии могут стать слишком плотными,
+    // а это ухудшает читаемость и производительность.
     double RoundUpToNiceStep(double dDesiredStep)
     {
         if (!std::isfinite(dDesiredStep) || dDesiredStep <= 0.0)
@@ -117,10 +137,14 @@ CGridRenderer::CGridRenderer()
     m_sStyle.fMajorThickness = 1.2f;
     m_sStyle.fAxisThickness = 1.8f;
 
-    // Значение 0.02 примерно соответствует 1.1 градуса.
-    // Сетка будет скрываться только при почти касательном взгляде,
-    // что ближе к CAD-like поведению.
-    m_sStyle.dMinViewNormalDot = 0.02;
+    // Минимально допустимый угол взгляда к плоскости сетки.
+    //
+    // Чем больше это значение, тем раньше сетка будет скрываться
+    // при пологом взгляде.
+    //
+    // 0.005 — мягкое значение для CAD-like поведения:
+    // сетка скрывается только при почти касательном взгляде.
+    m_sStyle.dMinViewNormalDot = 0.005;
 
     m_sStyle.bClampDepth = false;
     m_sStyle.bDrawPlane = false;
@@ -230,11 +254,13 @@ const SGridStyle& CGridRenderer::GetStyle() const
 
 void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
 {
+    // Если adaptive step выключен, оставляем вручную заданные dMinorStep/dMajorStep.
     if (!m_sStyle.bUseAdaptiveStep)
     {
         return;
     }
 
+    // Оцениваем экранный масштаб вдоль локальной оси X сетки.
     const double dPixelsPerUnitX = ComputePixelsPerWorldUnit(
         sFrameData.mViewProj,
         m_sGeometry.vOrigin,
@@ -242,6 +268,7 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
         sFrameData.vViewportSize
     );
 
+    // Оцениваем экранный масштаб вдоль локальной оси Y сетки.
     const double dPixelsPerUnitY = ComputePixelsPerWorldUnit(
         sFrameData.mViewProj,
         m_sGeometry.vOrigin,
@@ -251,6 +278,11 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
 
     double dPixelsPerWorldUnit = 0.0;
 
+    // Берём более консервативную оценку.
+    //
+    // При перспективе и наклонной сетке масштаб по X и Y может отличаться.
+    // min помогает избежать слишком плотной сетки в направлении,
+    // где линии ближе друг к другу на экране.
     if (dPixelsPerUnitX > 0.0 && dPixelsPerUnitY > 0.0)
     {
         dPixelsPerWorldUnit = std::min(dPixelsPerUnitX, dPixelsPerUnitY);
@@ -260,31 +292,44 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
         dPixelsPerWorldUnit = std::max(dPixelsPerUnitX, dPixelsPerUnitY);
     }
 
+    // Если оценить масштаб не удалось, не трогаем текущий шаг.
     if (!std::isfinite(dPixelsPerWorldUnit) || dPixelsPerWorldUnit <= 1e-9)
     {
         return;
     }
 
+    // Переводим желаемое расстояние между линиями из пикселей в world units.
+    //
+    // Например:
+    // dTargetMinorStepPixels = 18 px,
+    // dPixelsPerWorldUnit = 9 px/unit,
+    // desiredStep = 18 / 9 = 2 world units.
     const double dDesiredMinorStep =
         m_sStyle.dTargetMinorStepPixels / dPixelsPerWorldUnit;
 
+    // Округляем шаг до красивого CAD-like значения.
     const double dMinorStep = RoundUpToNiceStep(dDesiredMinorStep);
 
+    // Большой шаг строим как N малых шагов.
     const int nMajorLineFrequency = std::max(m_sStyle.nMajorLineFrequency, 1);
     const double dMajorStep = dMinorStep * static_cast<double>(nMajorLineFrequency);
 
     m_sStyle.dMinorStep = dMinorStep;
     m_sStyle.dMajorStep = dMajorStep;
 
+    // Переводим выбранные шаги обратно в пиксели,
+    // чтобы понять, стоит ли вообще показывать соответствующий слой.
     const double dMinorStepPixels = dMinorStep * dPixelsPerWorldUnit;
     const double dMajorStepPixels = dMajorStep * dPixelsPerWorldUnit;
 
-    // При adaptive step малый шаг уже подобран так, чтобы быть читаемым.
-    // Но оставляем защиту на случай экстремальных параметров.
+    // Если линии стали слишком плотными, слой можно отключить.
+    //
+    // Сейчас порог небольшой, потому что сам adaptive step уже старается
+    // держать minor grid около dTargetMinorStepPixels.
     m_sStyle.bShowMinorGrid = dMinorStepPixels >= 4.0;
     m_sStyle.bShowMajorGrid = dMajorStepPixels >= 4.0;
 
-    // Оси остаются видимыми всегда.
+    // Оси X/Y оставляем видимыми всегда.
     m_sStyle.bShowAxes = true;
 }
 
