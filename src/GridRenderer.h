@@ -162,6 +162,11 @@ struct SGridFrameData
     // Размер framebuffer в пикселях.
     // Используется для расчёта экранного масштаба adaptive grid.
     glm::dvec2 vViewportSize;
+
+    // true, если текущий кадр рендерится в ортографической проекции.
+    // Используется маркером начала координат, чтобы переключаться
+    // между 3D-триадой и плоским AutoCAD-like UCS icon.
+    bool bIsOrthographicProjection;
 };
 
 // Renderer аналитической координатной сетки.

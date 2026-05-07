@@ -7,12 +7,33 @@
 
 namespace
 {
+    // Ось маркера.
+    enum class EAxisMarkerAxis
+    {
+        X,
+        Y,
+        Z
+    };
+
+    // Вершина маркера.
+    //
+    // Позиция хранится в локальных координатах относительно origin сетки.
+    // В shader'е world position получается как:
+    //
+    //     world = uGridOrigin + aLocalPosition
+    //
+    // Это важно для больших координат: origin может быть очень большим,
+    // а сам маркер остаётся маленьким локальным объектом.
     struct SAxisMarkerVertex
     {
+        // Локальная позиция вершины относительно origin сетки.
         glm::dvec3 vLocalPosition;
+
+        // Цвет вершины.
         glm::vec4 vColor;
     };
 
+    // Добавляет одну линию в массив вершин.
     void AppendLine(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const glm::dvec3& vBegin,
@@ -24,65 +45,42 @@ namespace
         arrVertices.push_back({ vEnd, vColor });
     }
 
-    glm::dvec2 ProjectLocalPointToScreen(
-        const glm::dmat4& mViewProj,
-        const glm::dvec3& vGridOrigin,
-        const glm::dvec3& vLocalPosition,
-        const glm::dvec2& vViewportSize
+    // Добавляет квадрат в origin.
+    //
+    // Квадрат строится в billboard-базисе камеры,
+    // поэтому в orthographic-режиме он выглядит как экранный квадрат,
+    // как в AutoCAD UCS icon.
+    void AppendOriginSquare(
+        std::vector<SAxisMarkerVertex>& arrVertices,
+        const glm::dvec3& vCenter,
+        const glm::dvec3& vBillboardRight,
+        const glm::dvec3& vBillboardUp,
+        double dHalfSizeWorld,
+        const glm::vec4& vColor
     )
     {
-        const glm::dvec3 vWorldPosition = vGridOrigin + vLocalPosition;
-        const glm::dvec4 vClipPosition = mViewProj * glm::dvec4(vWorldPosition, 1.0);
+        const glm::dvec3 vLeftBottom =
+            vCenter - vBillboardRight * dHalfSizeWorld - vBillboardUp * dHalfSizeWorld;
 
-        if (std::abs(vClipPosition.w) < 1e-12)
-        {
-            return glm::dvec2(0.0, 0.0);
-        }
+        const glm::dvec3 vRightBottom =
+            vCenter + vBillboardRight * dHalfSizeWorld - vBillboardUp * dHalfSizeWorld;
 
-        const glm::dvec3 vNdc = glm::dvec3(vClipPosition) / vClipPosition.w;
+        const glm::dvec3 vRightTop =
+            vCenter + vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
 
-        return glm::dvec2(
-            (vNdc.x * 0.5 + 0.5) * vViewportSize.x,
-            (vNdc.y * 0.5 + 0.5) * vViewportSize.y
-        );
+        const glm::dvec3 vLeftTop =
+            vCenter - vBillboardRight * dHalfSizeWorld + vBillboardUp * dHalfSizeWorld;
+
+        AppendLine(arrVertices, vLeftBottom, vRightBottom, vColor);
+        AppendLine(arrVertices, vRightBottom, vRightTop, vColor);
+        AppendLine(arrVertices, vRightTop, vLeftTop, vColor);
+        AppendLine(arrVertices, vLeftTop, vLeftBottom, vColor);
     }
 
-    double GetPixelsPerWorldUnit(
-        const glm::dmat4& mViewProj,
-        const glm::dvec3& vGridOrigin,
-        const glm::dvec3& vLocalDirection,
-        const glm::dvec2& vViewportSize
-    )
-    {
-        const glm::dvec3 vDirection = glm::normalize(vLocalDirection);
-
-        const glm::dvec2 vScreenOrigin = ProjectLocalPointToScreen(
-            mViewProj,
-            vGridOrigin,
-            glm::dvec3(0.0, 0.0, 0.0),
-            vViewportSize
-        );
-
-        const glm::dvec2 vScreenUnit = ProjectLocalPointToScreen(
-            mViewProj,
-            vGridOrigin,
-            vDirection,
-            vViewportSize
-        );
-
-        const double dPixelsPerUnit = glm::length(vScreenUnit - vScreenOrigin);
-
-        return std::max(dPixelsPerUnit, 1e-6);
-    }
-
-    double PixelsToWorldUnits(
-        double dPixels,
-        double dPixelsPerWorldUnit
-    )
-    {
-        return dPixels / std::max(dPixelsPerWorldUnit, 1e-6);
-    }
-
+    // Добавляет букву X из двух линий.
+    //
+    // Буква строится в billboard-базисе камеры:
+    // vBillboardRight/vBillboardUp задают экранную ориентацию символа.
     void AppendGlyphX(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const glm::dvec3& vCenter,
@@ -108,6 +106,9 @@ namespace
         AppendLine(arrVertices, vLeftTop, vRightBottom, vColor);
     }
 
+    // Добавляет букву Y из трёх линий.
+    //
+    // Буква строится в billboard-базисе камеры.
     void AppendGlyphY(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const glm::dvec3& vCenter,
@@ -133,6 +134,9 @@ namespace
         AppendLine(arrVertices, vMiddle, vBottom, vColor);
     }
 
+    // Добавляет букву Z из трёх линий.
+    //
+    // Буква строится в billboard-базисе камеры.
     void AppendGlyphZ(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const glm::dvec3& vCenter,
@@ -159,135 +163,333 @@ namespace
         AppendLine(arrVertices, vLeftBottom, vRightBottom, vColor);
     }
 
-    void BuildAxisMarkerVertices(
-        const SGridGeometry& sGridGeometry,
-        const SGridFrameData& sFrameData,
-        const SAxisMarkerStyle& sStyle,
-        const glm::dvec3& vCameraRight,
-        const glm::dvec3& vCameraUp,
-        std::vector<SAxisMarkerVertex>& arrVertices
+    // Добавляет букву по идентификатору оси.
+    void AppendAxisGlyph(
+        std::vector<SAxisMarkerVertex>& arrVertices,
+        EAxisMarkerAxis eAxis,
+        const glm::dvec3& vCenter,
+        const glm::dvec3& vBillboardRight,
+        const glm::dvec3& vBillboardUp,
+        double dHalfSizeWorld,
+        const glm::vec4& vColor
     )
     {
-        arrVertices.clear();
-
-        const glm::dvec3 vOriginLocal(0.0, 0.0, 0.0);
-
-        const glm::dvec3 vAxisX = glm::normalize(sGridGeometry.vAxisX);
-        const glm::dvec3 vAxisY = glm::normalize(sGridGeometry.vAxisY);
-        const glm::dvec3 vAxisZ = glm::normalize(sGridGeometry.vNormal);
-
-        // Считаем, сколько пикселей занимает 1 world unit около origin
-        // в направлении каждой оси. Это позволяет задать длину маркера
-        // в пикселях и получить world-space длину для текущего zoom.
-        const double dPixelsPerUnitX = GetPixelsPerWorldUnit(
-            sFrameData.mViewProj,
-            sGridGeometry.vOrigin,
-            vAxisX,
-            sFrameData.vViewportSize
-        );
-
-        const double dPixelsPerUnitY = GetPixelsPerWorldUnit(
-            sFrameData.mViewProj,
-            sGridGeometry.vOrigin,
-            vAxisY,
-            sFrameData.vViewportSize
-        );
-
-        const double dPixelsPerUnitZ = GetPixelsPerWorldUnit(
-            sFrameData.mViewProj,
-            sGridGeometry.vOrigin,
-            vAxisZ,
-            sFrameData.vViewportSize
-        );
-
-        const double dPixelsPerUnitBillboardRight = GetPixelsPerWorldUnit(
-            sFrameData.mViewProj,
-            sGridGeometry.vOrigin,
-            vCameraRight,
-            sFrameData.vViewportSize
-        );
-
-        const double dPixelsPerUnitBillboardUp = GetPixelsPerWorldUnit(
-            sFrameData.mViewProj,
-            sGridGeometry.vOrigin,
-            vCameraUp,
-            sFrameData.vViewportSize
-        );
-
-        const double dPixelsPerUnitBillboard =
-            std::max(
-                (dPixelsPerUnitBillboardRight + dPixelsPerUnitBillboardUp) * 0.5,
-                1e-6
+        switch (eAxis)
+        {
+        case EAxisMarkerAxis::X:
+            AppendGlyphX(
+                arrVertices,
+                vCenter,
+                vBillboardRight,
+                vBillboardUp,
+                dHalfSizeWorld,
+                vColor
             );
+            break;
 
-        const double dAxisLengthXWorld = PixelsToWorldUnits(
-            sStyle.dAxisLengthPixels,
-            dPixelsPerUnitX
+        case EAxisMarkerAxis::Y:
+            AppendGlyphY(
+                arrVertices,
+                vCenter,
+                vBillboardRight,
+                vBillboardUp,
+                dHalfSizeWorld,
+                vColor
+            );
+            break;
+
+        case EAxisMarkerAxis::Z:
+            AppendGlyphZ(
+                arrVertices,
+                vCenter,
+                vBillboardRight,
+                vBillboardUp,
+                dHalfSizeWorld,
+                vColor
+            );
+            break;
+        }
+    }
+
+    // Проецирует локальную точку маркера в screen-space.
+    //
+    // Локальная точка переводится в world-space через:
+    //
+    //     world = gridOrigin + local
+    //
+    // Затем world-space точка проецируется в пиксели framebuffer'а.
+    bool ProjectLocalPointToScreen(
+        const glm::dmat4& mViewProj,
+        const glm::dvec3& vGridOrigin,
+        const glm::dvec3& vLocalPosition,
+        const glm::dvec2& vViewportSize,
+        glm::dvec2& vScreenPosition
+    )
+    {
+        const glm::dvec3 vWorldPosition = vGridOrigin + vLocalPosition;
+        const glm::dvec4 vClipPosition = mViewProj * glm::dvec4(vWorldPosition, 1.0);
+
+        if (std::abs(vClipPosition.w) < 1e-12)
+        {
+            return false;
+        }
+
+        const glm::dvec3 vNdc = glm::dvec3(vClipPosition) / vClipPosition.w;
+
+        vScreenPosition = glm::dvec2(
+            (vNdc.x * 0.5 + 0.5) * vViewportSize.x,
+            (vNdc.y * 0.5 + 0.5) * vViewportSize.y
         );
 
-        const double dAxisLengthYWorld = PixelsToWorldUnits(
-            sStyle.dAxisLengthPixels,
-            dPixelsPerUnitY
+        return true;
+    }
+
+    // Считает, сколько пикселей занимает 1 world unit
+    // в заданном локальном направлении около origin маркера.
+    double GetPixelsPerWorldUnit(
+        const glm::dmat4& mViewProj,
+        const glm::dvec3& vGridOrigin,
+        const glm::dvec3& vLocalDirection,
+        const glm::dvec2& vViewportSize
+    )
+    {
+        const glm::dvec3 vDirection = glm::normalize(vLocalDirection);
+
+        glm::dvec2 vScreenOrigin(0.0);
+        glm::dvec2 vScreenUnit(0.0);
+
+        const bool bOriginProjected = ProjectLocalPointToScreen(
+            mViewProj,
+            vGridOrigin,
+            glm::dvec3(0.0, 0.0, 0.0),
+            vViewportSize,
+            vScreenOrigin
         );
 
-        const double dAxisLengthZWorld = PixelsToWorldUnits(
+        const bool bUnitProjected = ProjectLocalPointToScreen(
+            mViewProj,
+            vGridOrigin,
+            vDirection,
+            vViewportSize,
+            vScreenUnit
+        );
+
+        if (!bOriginProjected || !bUnitProjected)
+        {
+            return 1.0;
+        }
+
+        return std::max(glm::length(vScreenUnit - vScreenOrigin), 1e-6);
+    }
+
+    // Переводит размер в пикселях в world units
+    // по заранее рассчитанному pixels-per-world-unit.
+    double PixelsToWorldUnits(
+        double dPixels,
+        double dPixelsPerWorldUnit
+    )
+    {
+        return dPixels / std::max(dPixelsPerWorldUnit, 1e-6);
+    }
+
+    // Возвращает world-space right/up/viewDirection камеры из обратной view-матрицы.
+    //
+    // Для OpenGL-камеры:
+    // - local X камеры — right;
+    // - local Y камеры — up;
+    // - local -Z камеры — view direction.
+    void ExtractCameraBasis(
+        const glm::dmat4& mView,
+        glm::dvec3& vCameraRight,
+        glm::dvec3& vCameraUp,
+        glm::dvec3& vCameraViewDirection
+    )
+    {
+        const glm::dmat4 mInvView = glm::inverse(mView);
+
+        vCameraRight = glm::normalize(glm::dvec3(mInvView[0]));
+        vCameraUp = glm::normalize(glm::dvec3(mInvView[1]));
+
+        // В OpenGL камера смотрит вдоль локальной -Z.
+        vCameraViewDirection = glm::normalize(-glm::dvec3(mInvView[2]));
+    }
+
+    // Возвращает локальное направление оси маркера.
+    glm::dvec3 GetAxisDirection(
+        const SGridGeometry& sGridGeometry,
+        EAxisMarkerAxis eAxis
+    )
+    {
+        switch (eAxis)
+        {
+        case EAxisMarkerAxis::X:
+            return glm::normalize(sGridGeometry.vAxisX);
+
+        case EAxisMarkerAxis::Y:
+            return glm::normalize(sGridGeometry.vAxisY);
+
+        case EAxisMarkerAxis::Z:
+            return glm::normalize(sGridGeometry.vNormal);
+
+        default:
+            return glm::dvec3(1.0, 0.0, 0.0);
+        }
+    }
+
+    // Определяет, какую ось нужно скрыть в orthographic-режиме.
+    //
+    // Скрывается та ось, которая наиболее параллельна направлению взгляда.
+    // Это даёт AutoCAD-like поведение:
+    // - Top/Bottom view: скрываем Z;
+    // - Front/Back view: скрываем Y;
+    // - Left/Right view: скрываем X.
+    EAxisMarkerAxis ChooseHiddenAxisForOrthographicView(
+        const SGridGeometry& sGridGeometry,
+        const glm::dvec3& vCameraViewDirection
+    )
+    {
+        const glm::dvec3 vAxisX = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::X);
+        const glm::dvec3 vAxisY = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::Y);
+        const glm::dvec3 vAxisZ = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::Z);
+
+        const double dDotX = std::abs(glm::dot(vCameraViewDirection, vAxisX));
+        const double dDotY = std::abs(glm::dot(vCameraViewDirection, vAxisY));
+        const double dDotZ = std::abs(glm::dot(vCameraViewDirection, vAxisZ));
+
+        if (dDotX >= dDotY && dDotX >= dDotZ)
+        {
+            return EAxisMarkerAxis::X;
+        }
+
+        if (dDotY >= dDotX && dDotY >= dDotZ)
+        {
+            return EAxisMarkerAxis::Y;
+        }
+
+        return EAxisMarkerAxis::Z;
+    }
+
+    // Проецирует ось маркера в screen-space и возвращает экранное направление.
+    //
+    // Это нужно для orthographic-маркера:
+    // линия оси должна идти ровно в том направлении, в котором ось видна на экране,
+    // но длина линии должна быть фиксированной в пикселях.
+    bool TryGetAxisScreenDirection(
+        const SGridFrameData& sFrameData,
+        const SGridGeometry& sGridGeometry,
+        const glm::dvec3& vAxisDirection,
+        glm::dvec2& vScreenDirection
+    )
+    {
+        glm::dvec2 vScreenOrigin(0.0);
+        glm::dvec2 vScreenAxisPoint(0.0);
+
+        const bool bOriginProjected = ProjectLocalPointToScreen(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            glm::dvec3(0.0, 0.0, 0.0),
+            sFrameData.vViewportSize,
+            vScreenOrigin
+        );
+
+        const bool bAxisProjected = ProjectLocalPointToScreen(
+            sFrameData.mViewProj,
+            sGridGeometry.vOrigin,
+            vAxisDirection,
+            sFrameData.vViewportSize,
+            vScreenAxisPoint
+        );
+
+        if (!bOriginProjected || !bAxisProjected)
+        {
+            return false;
+        }
+
+        const glm::dvec2 vDelta = vScreenAxisPoint - vScreenOrigin;
+        const double dLength = glm::length(vDelta);
+
+        if (dLength < 1e-6)
+        {
+            return false;
+        }
+
+        vScreenDirection = vDelta / dLength;
+        return true;
+    }
+
+    // Строит одну экранно-стабильную ось для orthographic-маркера.
+    //
+    // Экранное направление берётся из проекции реальной оси,
+    // а затем переводится обратно в world-space через cameraRight/cameraUp.
+    // Благодаря этому длина оси остаётся фиксированной в пикселях.
+    void AppendOrthographicAxis(
+        std::vector<SAxisMarkerVertex>& arrVertices,
+        const SGridFrameData& sFrameData,
+        const SGridGeometry& sGridGeometry,
+        const SAxisMarkerStyle& sStyle,
+        EAxisMarkerAxis eAxis,
+        const glm::dvec3& vCameraRight,
+        const glm::dvec3& vCameraUp,
+        double dPixelsPerBillboardWorldUnit
+    )
+    {
+        const glm::dvec3 vAxisDirection = GetAxisDirection(sGridGeometry, eAxis);
+
+        glm::dvec2 vScreenDirection(0.0);
+
+        const bool bHasScreenDirection = TryGetAxisScreenDirection(
+            sFrameData,
+            sGridGeometry,
+            vAxisDirection,
+            vScreenDirection
+        );
+
+        if (!bHasScreenDirection)
+        {
+            return;
+        }
+
+        const double dAxisLengthWorld = PixelsToWorldUnits(
             sStyle.dAxisLengthPixels,
-            dPixelsPerUnitZ
+            dPixelsPerBillboardWorldUnit
         );
 
         const double dLetterOffsetWorld = PixelsToWorldUnits(
             sStyle.dLetterOffsetPixels,
-            dPixelsPerUnitBillboard
+            dPixelsPerBillboardWorldUnit
         );
 
         const double dLetterHalfSizeWorld = PixelsToWorldUnits(
             sStyle.dLetterSizePixels,
-            dPixelsPerUnitBillboard
+            dPixelsPerBillboardWorldUnit
         );
 
-        const glm::dvec3 vXEnd = vAxisX * dAxisLengthXWorld;
-        const glm::dvec3 vYEnd = vAxisY * dAxisLengthYWorld;
-        const glm::dvec3 vZEnd = vAxisZ * dAxisLengthZWorld;
-
-        // Короткие оси из одной точки.
-        // Их экранная длина остаётся примерно постоянной при zoom.
-        AppendLine(arrVertices, vOriginLocal, vXEnd, sStyle.vAxisColor);
-        AppendLine(arrVertices, vOriginLocal, vYEnd, sStyle.vAxisColor);
-        AppendLine(arrVertices, vOriginLocal, vZEnd, sStyle.vAxisColor);
-
-        // Центры букв располагаем возле концов соответствующих осей.
-        const glm::dvec3 vXLabelCenter =
-            vAxisX * (dAxisLengthXWorld + dLetterOffsetWorld);
-
-        const glm::dvec3 vYLabelCenter =
-            vAxisY * (dAxisLengthYWorld + dLetterOffsetWorld);
-
-        const glm::dvec3 vZLabelCenter =
-            vAxisZ * (dAxisLengthZWorld + dLetterOffsetWorld);
-
-        // Буквы строятся в billboard-базисе камеры,
-        // поэтому всегда смотрят на пользователя.
-        AppendGlyphX(
-            arrVertices,
-            vXLabelCenter,
-            vCameraRight,
-            vCameraUp,
-            dLetterHalfSizeWorld,
-            sStyle.vTextColor
+        // Переводим экранное направление в world-space направление.
+        //
+        // vScreenDirection.x идёт вдоль cameraRight,
+        // vScreenDirection.y идёт вдоль cameraUp.
+        const glm::dvec3 vWorldScreenDirection = glm::normalize(
+            vCameraRight * vScreenDirection.x +
+            vCameraUp * vScreenDirection.y
         );
 
-        AppendGlyphY(
+        const glm::dvec3 vBegin(0.0, 0.0, 0.0);
+        const glm::dvec3 vEnd = vWorldScreenDirection * dAxisLengthWorld;
+
+        AppendLine(
             arrVertices,
-            vYLabelCenter,
-            vCameraRight,
-            vCameraUp,
-            dLetterHalfSizeWorld,
-            sStyle.vTextColor
+            vBegin,
+            vEnd,
+            sStyle.vAxisColor
         );
 
-        AppendGlyphZ(
+        const glm::dvec3 vLabelCenter =
+            vWorldScreenDirection * (dAxisLengthWorld + dLetterOffsetWorld);
+
+        AppendAxisGlyph(
             arrVertices,
-            vZLabelCenter,
+            eAxis,
+            vLabelCenter,
             vCameraRight,
             vCameraUp,
             dLetterHalfSizeWorld,
@@ -300,16 +502,18 @@ CAxisMarkerRenderer::CAxisMarkerRenderer()
     : m_nVao(0)
     , m_nVbo(0)
 {
-    // Все размеры — в пикселях.
-    // Поэтому маркер сохраняет визуальный размер при zoom.
+    // Все размеры задаются в пикселях,
+    // чтобы маркер не менял визуальный размер при zoom.
     m_sStyle.dAxisLengthPixels = 48.0;
     m_sStyle.dLetterOffsetPixels = 10.0;
     m_sStyle.dLetterSizePixels = 6.0;
+    m_sStyle.dOriginSquareHalfSizePixels = 4.0;
 
     m_sStyle.fLineWidth = 1.5f;
 
     m_sStyle.vAxisColor = glm::vec4(0.92f, 0.92f, 0.92f, 1.0f);
     m_sStyle.vTextColor = glm::vec4(0.95f, 0.95f, 0.95f, 1.0f);
+    m_sStyle.vOriginSquareColor = glm::vec4(0.95f, 0.95f, 0.95f, 1.0f);
 }
 
 CAxisMarkerRenderer::~CAxisMarkerRenderer()
@@ -356,6 +560,7 @@ void CAxisMarkerRenderer::Initialize()
     glBindVertexArray(m_nVao);
     glBindBuffer(GL_ARRAY_BUFFER, m_nVbo);
 
+    // location 0: dvec3 local position.
     glEnableVertexAttribArray(0);
     glVertexAttribLPointer(
         0,
@@ -365,6 +570,7 @@ void CAxisMarkerRenderer::Initialize()
         reinterpret_cast<const void*>(offsetof(SAxisMarkerVertex, vLocalPosition))
     );
 
+    // location 1: vec4 color.
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(
         1,
@@ -410,23 +616,284 @@ void CAxisMarkerRenderer::Render(
     const SGridGeometry& sGridGeometry
 ) const
 {
-    const glm::dmat4 mInvView = glm::inverse(sFrameData.mView);
+    if (sFrameData.bIsOrthographicProjection)
+    {
+        RenderOrthographicMarker(
+            shaderProgram,
+            sFrameData,
+            sGridGeometry
+        );
+    }
+    else
+    {
+        RenderPerspectiveMarker(
+            shaderProgram,
+            sFrameData,
+            sGridGeometry
+        );
+    }
+}
 
-    const glm::dvec3 vCameraRight = glm::normalize(glm::dvec3(mInvView[0]));
-    const glm::dvec3 vCameraUp = glm::normalize(glm::dvec3(mInvView[1]));
+void CAxisMarkerRenderer::RenderPerspectiveMarker(
+    const CShaderProgram& shaderProgram,
+    const SGridFrameData& sFrameData,
+    const SGridGeometry& sGridGeometry
+) const
+{
+    glm::dvec3 vCameraRight(1.0, 0.0, 0.0);
+    glm::dvec3 vCameraUp(0.0, 1.0, 0.0);
+    glm::dvec3 vCameraViewDirection(0.0, 0.0, -1.0);
+
+    ExtractCameraBasis(
+        sFrameData.mView,
+        vCameraRight,
+        vCameraUp,
+        vCameraViewDirection
+    );
+
+    const glm::dvec3 vAxisX = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::X);
+    const glm::dvec3 vAxisY = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::Y);
+    const glm::dvec3 vAxisZ = GetAxisDirection(sGridGeometry, EAxisMarkerAxis::Z);
+
+    const double dPixelsPerUnitX = GetPixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        sGridGeometry.vOrigin,
+        vAxisX,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitY = GetPixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        sGridGeometry.vOrigin,
+        vAxisY,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitZ = GetPixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        sGridGeometry.vOrigin,
+        vAxisZ,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitBillboardRight = GetPixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        sGridGeometry.vOrigin,
+        vCameraRight,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitBillboardUp = GetPixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        sGridGeometry.vOrigin,
+        vCameraUp,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitBillboard =
+        std::max(
+            (dPixelsPerUnitBillboardRight + dPixelsPerUnitBillboardUp) * 0.5,
+            1e-6
+        );
+
+    const double dAxisLengthXWorld = PixelsToWorldUnits(
+        m_sStyle.dAxisLengthPixels,
+        dPixelsPerUnitX
+    );
+
+    const double dAxisLengthYWorld = PixelsToWorldUnits(
+        m_sStyle.dAxisLengthPixels,
+        dPixelsPerUnitY
+    );
+
+    const double dAxisLengthZWorld = PixelsToWorldUnits(
+        m_sStyle.dAxisLengthPixels,
+        dPixelsPerUnitZ
+    );
+
+    const double dLetterOffsetWorld = PixelsToWorldUnits(
+        m_sStyle.dLetterOffsetPixels,
+        dPixelsPerUnitBillboard
+    );
+
+    const double dLetterHalfSizeWorld = PixelsToWorldUnits(
+        m_sStyle.dLetterSizePixels,
+        dPixelsPerUnitBillboard
+    );
 
     std::vector<SAxisMarkerVertex> arrVertices;
 
-    BuildAxisMarkerVertices(
-        sGridGeometry,
-        sFrameData,
-        m_sStyle,
+    const glm::dvec3 vOriginLocal(0.0, 0.0, 0.0);
+
+    const glm::dvec3 vXEnd = vAxisX * dAxisLengthXWorld;
+    const glm::dvec3 vYEnd = vAxisY * dAxisLengthYWorld;
+    const glm::dvec3 vZEnd = vAxisZ * dAxisLengthZWorld;
+
+    // Perspective-режим: показываем все три оси.
+    AppendLine(arrVertices, vOriginLocal, vXEnd, m_sStyle.vAxisColor);
+    AppendLine(arrVertices, vOriginLocal, vYEnd, m_sStyle.vAxisColor);
+    AppendLine(arrVertices, vOriginLocal, vZEnd, m_sStyle.vAxisColor);
+
+    AppendGlyphX(
+        arrVertices,
+        vAxisX * (dAxisLengthXWorld + dLetterOffsetWorld),
         vCameraRight,
         vCameraUp,
-        arrVertices
+        dLetterHalfSizeWorld,
+        m_sStyle.vTextColor
     );
 
-    if (arrVertices.empty())
+    AppendGlyphY(
+        arrVertices,
+        vAxisY * (dAxisLengthYWorld + dLetterOffsetWorld),
+        vCameraRight,
+        vCameraUp,
+        dLetterHalfSizeWorld,
+        m_sStyle.vTextColor
+    );
+
+    AppendGlyphZ(
+        arrVertices,
+        vAxisZ * (dAxisLengthZWorld + dLetterOffsetWorld),
+        vCameraRight,
+        vCameraUp,
+        dLetterHalfSizeWorld,
+        m_sStyle.vTextColor
+    );
+
+    UploadAndDrawLines(
+        shaderProgram,
+        sFrameData,
+        sGridGeometry,
+        arrVertices.data(),
+        static_cast<GLsizeiptr>(arrVertices.size() * sizeof(SAxisMarkerVertex)),
+        static_cast<GLsizei>(arrVertices.size())
+    );
+}
+
+void CAxisMarkerRenderer::RenderOrthographicMarker(
+    const CShaderProgram& shaderProgram,
+    const SGridFrameData& sFrameData,
+    const SGridGeometry& sGridGeometry
+) const
+{
+    glm::dvec3 vCameraRight(1.0, 0.0, 0.0);
+    glm::dvec3 vCameraUp(0.0, 1.0, 0.0);
+    glm::dvec3 vCameraViewDirection(0.0, 0.0, -1.0);
+
+    ExtractCameraBasis(
+        sFrameData.mView,
+        vCameraRight,
+        vCameraUp,
+        vCameraViewDirection
+    );
+
+    const EAxisMarkerAxis eHiddenAxis = ChooseHiddenAxisForOrthographicView(
+        sGridGeometry,
+        vCameraViewDirection
+    );
+
+    const double dPixelsPerUnitBillboardRight = GetPixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        sGridGeometry.vOrigin,
+        vCameraRight,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitBillboardUp = GetPixelsPerWorldUnit(
+        sFrameData.mViewProj,
+        sGridGeometry.vOrigin,
+        vCameraUp,
+        sFrameData.vViewportSize
+    );
+
+    const double dPixelsPerUnitBillboard =
+        std::max(
+            (dPixelsPerUnitBillboardRight + dPixelsPerUnitBillboardUp) * 0.5,
+            1e-6
+        );
+
+    const double dOriginSquareHalfSizeWorld = PixelsToWorldUnits(
+        m_sStyle.dOriginSquareHalfSizePixels,
+        dPixelsPerUnitBillboard
+    );
+
+    std::vector<SAxisMarkerVertex> arrVertices;
+
+    // Orthographic-режим: в origin рисуем маленький квадрат,
+    // как UCS icon в AutoCAD.
+    AppendOriginSquare(
+        arrVertices,
+        glm::dvec3(0.0, 0.0, 0.0),
+        vCameraRight,
+        vCameraUp,
+        dOriginSquareHalfSizeWorld,
+        m_sStyle.vOriginSquareColor
+    );
+
+    // Добавляем только те оси, которые не направлены в камеру.
+    if (eHiddenAxis != EAxisMarkerAxis::X)
+    {
+        AppendOrthographicAxis(
+            arrVertices,
+            sFrameData,
+            sGridGeometry,
+            m_sStyle,
+            EAxisMarkerAxis::X,
+            vCameraRight,
+            vCameraUp,
+            dPixelsPerUnitBillboard
+        );
+    }
+
+    if (eHiddenAxis != EAxisMarkerAxis::Y)
+    {
+        AppendOrthographicAxis(
+            arrVertices,
+            sFrameData,
+            sGridGeometry,
+            m_sStyle,
+            EAxisMarkerAxis::Y,
+            vCameraRight,
+            vCameraUp,
+            dPixelsPerUnitBillboard
+        );
+    }
+
+    if (eHiddenAxis != EAxisMarkerAxis::Z)
+    {
+        AppendOrthographicAxis(
+            arrVertices,
+            sFrameData,
+            sGridGeometry,
+            m_sStyle,
+            EAxisMarkerAxis::Z,
+            vCameraRight,
+            vCameraUp,
+            dPixelsPerUnitBillboard
+        );
+    }
+
+    UploadAndDrawLines(
+        shaderProgram,
+        sFrameData,
+        sGridGeometry,
+        arrVertices.data(),
+        static_cast<GLsizeiptr>(arrVertices.size() * sizeof(SAxisMarkerVertex)),
+        static_cast<GLsizei>(arrVertices.size())
+    );
+}
+
+void CAxisMarkerRenderer::UploadAndDrawLines(
+    const CShaderProgram& shaderProgram,
+    const SGridFrameData& sFrameData,
+    const SGridGeometry& sGridGeometry,
+    const void* pVertexData,
+    GLsizeiptr nVertexDataSize,
+    GLsizei nVertexCount
+) const
+{
+    if (pVertexData == nullptr || nVertexDataSize <= 0 || nVertexCount <= 0)
     {
         return;
     }
@@ -441,12 +908,16 @@ void CAxisMarkerRenderer::Render(
 
     glBufferData(
         GL_ARRAY_BUFFER,
-        static_cast<GLsizeiptr>(arrVertices.size() * sizeof(SAxisMarkerVertex)),
-        arrVertices.data(),
+        nVertexDataSize,
+        pVertexData,
         GL_DYNAMIC_DRAW
     );
 
+    // Маркер рисуем поверх сетки, как вспомогательный viewport UI.
     const GLboolean bDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+
+    GLfloat fOldLineWidth = 1.0f;
+    glGetFloatv(GL_LINE_WIDTH, &fOldLineWidth);
 
     if (bDepthTestEnabled == GL_TRUE)
     {
@@ -455,9 +926,9 @@ void CAxisMarkerRenderer::Render(
 
     glLineWidth(m_sStyle.fLineWidth);
 
-    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(arrVertices.size()));
+    glDrawArrays(GL_LINES, 0, nVertexCount);
 
-    glLineWidth(1.0f);
+    glLineWidth(fOldLineWidth);
 
     if (bDepthTestEnabled == GL_TRUE)
     {

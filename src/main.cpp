@@ -43,13 +43,22 @@ enum class EGridPreset
 // - zoom в направлении курсора мыши.
 struct SApplicationState
 {
+    // Указатель на orbit-камеру.
     COrbitCamera* pCamera;
+
+    // Указатель на текущую геометрию сетки.
     SGridGeometry* pGridGeometry;
 
+    // Указатель на флаг ортографической проекции.
     bool* pUseOrthographicProjection;
 
+    // Дефолтное расстояние камеры до target.
     double dDefaultCameraDistance;
+
+    // Дефолтный yaw камеры в радианах.
     double dDefaultCameraYawRadians;
+
+    // Дефолтный pitch камеры в радианах.
     double dDefaultCameraPitchRadians;
 };
 
@@ -58,6 +67,16 @@ static void GlfwErrorCallback(int nErrorCode, const char* pszDescription)
     std::cerr << "GLFW error " << nErrorCode << ": " << pszDescription << '\n';
 }
 
+// Рассчитывает near/far planes для текущего положения камеры.
+//
+// В CAD-навигации камера может очень сильно приближаться к сетке
+// и очень далеко отдаляться от неё. Фиксированные значения near/far
+// для такого поведения работают плохо:
+//
+// - если near слишком большой, сетка начинает обрезаться при приближении;
+// - если far слишком маленький, сетка начинает пропадать при отдалении.
+//
+// Поэтому near/far вычисляются динамически от расстояния камеры до target.
 static void CalculateCameraClippingPlanes(
     const COrbitCamera& camera,
     double& dNearPlane,
@@ -66,24 +85,28 @@ static void CalculateCameraClippingPlanes(
 {
     const double dCameraDistance = camera.GetDistance();
 
-    // Near plane должен уменьшаться при приближении камеры к сетке.
+    // Near plane уменьшается при приближении.
     //
-    // Если оставить фиксированные 0.1, то при сильном zoom-in часть сетки
-    // окажется между камерой и near plane и будет отбрасываться.
+    // Это защищает от ситуации, когда часть сетки находится между камерой
+    // и near plane. В таком случае фрагменты получают depth < 0 и отбрасываются.
     dNearPlane = std::clamp(
         dCameraDistance * 0.0005,
         0.00001,
         0.1
     );
 
-    // Far plane должен расти при отдалении камеры,
-    // иначе сетка будет обрезаться вдали.
+    // Far plane увеличивается при отдалении.
+    //
+    // Это защищает от ситуации, когда дальняя часть сетки выходит за far plane
+    // и получает depth > 1.
     dFarPlane = std::max(
         1000.0,
         dCameraDistance * 50.0
     );
 
-    // Гарантируем, что far всегда заметно больше near.
+    // Минимальный зазор между near и far.
+    //
+    // Это страховка от некорректных параметров камеры.
     if (dFarPlane < dNearPlane * 1000.0)
     {
         dFarPlane = dNearPlane * 1000.0;
@@ -123,6 +146,14 @@ static glm::dvec2 GetCursorNdc(GLFWwindow* pWindow)
     return glm::dvec2(dNdcX, dNdcY);
 }
 
+// Создаёт projection matrix для текущего режима отображения.
+//
+// Поддерживаются два режима:
+// - perspective — основной 3D-режим;
+// - orthographic — CAD-like режим без перспективных искажений.
+//
+// Near/far передаются параметрами, потому что они рассчитываются динамически
+// и должны быть одинаковыми для основного render loop и zoom-to-cursor.
 static glm::dmat4 CreateProjectionMatrix(
     bool bUseOrthographicProjection,
     double dAspect,
@@ -134,8 +165,8 @@ static glm::dmat4 CreateProjectionMatrix(
     {
         // Тестовый ортографический режим.
         //
-        // Размер подобран так, чтобы сетка была видна примерно
-        // в том же масштабе, что и в перспективе.
+        // Размер области пока фиксированный. Для полноценного CAD-like
+        // orthographic zoom в будущем лучше связать его с distance/zoom камеры.
         const double dHalfHeight = 18.0;
         const double dHalfWidth = dHalfHeight * dAspect;
 
@@ -149,6 +180,9 @@ static glm::dmat4 CreateProjectionMatrix(
         );
     }
 
+    // Перспективная проекция.
+    //
+    // FOV = 60 градусов выбран как удобный тестовый угол обзора.
     return glm::perspective(
         glm::radians(60.0),
         dAspect,
@@ -607,12 +641,23 @@ int main()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    EGridPreset eCurrentPreset = EGridPreset::LargeOffsetAndRotated;
+    // Для стартового вида как в AutoCAD используем обычную XY-сетку,
+    // без большого смещения и без тестового поворота.
+    EGridPreset eCurrentPreset = EGridPreset::Simple;
     SGridGeometry sGridGeometry = CreateGridGeometry(eCurrentPreset);
 
+    // Стартовый вид сверху.
+    //
+    // Идея:
+    // - камера смотрит на origin сетки;
+    // - плоскость XY видна сверху;
+    // - режим похож на AutoCAD Top View.
+    //
+    // Берём pitch не ровно 90°, а 89.9°,
+    // чтобы избежать вырожденного случая в lookAt/cross product.
     const double dDefaultCameraDistance = 24.0;
-    const double dDefaultCameraYawRadians = glm::radians(-45.0);
-    const double dDefaultCameraPitchRadians = glm::radians(30.0);
+    const double dDefaultCameraYawRadians = glm::radians(0.0);
+    const double dDefaultCameraPitchRadians = glm::radians(89.9);
 
     COrbitCamera camera(
         sGridGeometry.vOrigin,
@@ -621,7 +666,9 @@ int main()
         dDefaultCameraPitchRadians
     );
 
-    bool bUseOrthographicProjection = false;
+    // AutoCAD Top View обычно воспринимается как ортографический режим,
+    // без перспективных искажений.
+    bool bUseOrthographicProjection = true;
 
     SApplicationState sApplicationState;
     sApplicationState.pCamera = &camera;
@@ -659,7 +706,9 @@ int main()
         };
 
     std::cout << "Grid preset: " << GetGridPresetName(eCurrentPreset) << '\n';
-    std::cout << "Projection: perspective\n";
+    std::cout << "Projection: "
+        << (bUseOrthographicProjection ? "orthographic" : "perspective")
+        << '\n';
     std::cout << "Grid bounds: " << (sGridStyle.bIsBounded ? "bounded" : "infinite") << '\n';
     std::cout << "Grid mode: " << (sGridStyle.bDrawDots ? "dots" : "lines") << '\n';
     std::cout << "Depth clamp: " << (sGridStyle.bClampDepth ? "enabled" : "disabled") << '\n';
@@ -777,7 +826,7 @@ int main()
 
         glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
 
-        // nanoCAD-like тёмный сине-серый фон.
+        // CAD-like тёмный фон.
         glClearColor(0.145f, 0.176f, 0.223f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -811,21 +860,50 @@ int main()
         const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
 
         SGridFrameData sFrameData;
+
+        // View-матрица нужна маркеру осей,
+        // чтобы получить cameraRight/cameraUp/cameraViewDirection.
         sFrameData.mView = mView;
+
+        // View-projection нужна сетке и маркеру
+        // для проекции точек и расчёта экранных размеров.
         sFrameData.mViewProj = mViewProj;
+
+        // Обратная view-projection нужна fullscreen vertex shader'у сетки,
+        // чтобы восстановить near/far точки луча.
         sFrameData.mInvViewProj = mInvViewProj;
+
+        // Размер framebuffer нужен для пересчёта world units в pixels.
         sFrameData.vViewportSize = glm::dvec2(
             static_cast<double>(nFramebufferWidth),
             static_cast<double>(nFramebufferHeight)
         );
 
+        // Флаг нужен AxisMarkerRenderer.
+        // В perspective он рисует 3D-триаду.
+        // В orthographic он рисует плоский AutoCAD-like UCS icon.
+        sFrameData.bIsOrthographicProjection = bUseOrthographicProjection;
+
+        // Обновляем геометрию сетки перед рендером.
+        //
+        // Это нужно делать каждый кадр, потому что тестовые presets могут менять:
+        // - origin;
+        // - ориентацию осей;
+        // - normal.
         gridRenderer.SetGeometry(sGridGeometry);
 
-        // AutoCAD-like поведение:
-        // шаг сетки подстраивается под текущий zoom,
-        // чтобы плотность линий на экране оставалась стабильной.
+        // Обновляем adaptive step.
+        //
+        // В CAD-like сетке шаг не должен быть фиксированным.
+        // При приближении должны появляться более мелкие деления,
+        // при отдалении — шаг должен укрупняться.
+        //
+        // Здесь renderer оценивает текущий экранный масштаб около origin сетки
+        // и выбирает красивый шаг вида 1/2/5 * 10^n.
         gridRenderer.UpdateAdaptiveStep(sFrameData);
 
+        // Рисуем сетку fullscreen triangle'ом.
+        // Реальная логика сетки находится в vertex/fragment shader.
         gridRenderer.Render(gridShaderProgram, sFrameData);
 
         axisMarkerRenderer.Render(
