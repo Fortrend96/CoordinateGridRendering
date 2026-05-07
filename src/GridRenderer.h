@@ -17,7 +17,6 @@ struct SGridGeometry
     glm::dvec3 vAxisY;
     glm::dvec3 vNormal;
 };
-
 // ¬изуальные параметры сетки.
 struct SGridStyle
 {
@@ -30,10 +29,12 @@ struct SGridStyle
 
     double dMinViewNormalDot;
 
-    // ”правл€емый режим:
-    // false Ч фрагменты за near/far отбрасываютс€;
-    // true  Ч depth прижимаетс€ к [0; 1].
     bool bClampDepth;
+
+    // Ќовый параметр:
+    // false Ч рисуем только линии/оси;
+    // true  Ч рисуем ещЄ и заливку плоскости.
+    bool bDrawPlane;
 
     bool bIsBounded;
     glm::dvec4 vBounds;
@@ -53,7 +54,6 @@ struct SGridStyle
     glm::vec4 vXAxisColorBottom;
     glm::vec4 vYAxisColorBottom;
 };
-
 // ƒанные кадра, которые нужны сетке и вспомогательным рендерам.
 struct SGridFrameData
 {

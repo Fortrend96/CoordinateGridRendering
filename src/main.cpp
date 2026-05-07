@@ -454,6 +454,7 @@ static void PrintControls()
     std::cout << "  B                                  : toggle infinite/bounded grid\n";
     std::cout << "  M                                  : toggle lines/dots mode\n";
     std::cout << "  C                                  : toggle depth clamp\n";
+    std::cout << "  F                                  : toggle grid plane fill\n";
     std::cout << "  1                                  : simple grid\n";
     std::cout << "  2                                  : large offset grid\n";
     std::cout << "  3                                  : rotated grid\n";
@@ -593,6 +594,7 @@ int main()
     bool bWasBPressed = false;
     bool bWasMPressed = false;
     bool bWasCPressed = false;
+    bool bWasFPressed = false;
 
     auto fnSetPreset = [&](EGridPreset eNewPreset)
         {
@@ -615,6 +617,7 @@ int main()
     std::cout << "Grid bounds: " << (sGridStyle.bIsBounded ? "bounded" : "infinite") << '\n';
     std::cout << "Grid mode: " << (sGridStyle.bDrawDots ? "dots" : "lines") << '\n';
     std::cout << "Depth clamp: " << (sGridStyle.bClampDepth ? "enabled" : "disabled") << '\n';
+    std::cout << "Grid plane fill: " << (sGridStyle.bDrawPlane ? "enabled" : "disabled") << '\n';
 
     while (!glfwWindowShouldClose(pWindow))
     {
@@ -711,6 +714,24 @@ int main()
 
         bWasCPressed = bIsCPressed;
 
+        // Переключение заливки плоскости сетки.
+        //
+        // По умолчанию заливка выключена: фон рисуется через glClearColor,
+        // а grid shader выводит только линии/оси.
+        const bool bIsFPressed = glfwGetKey(pWindow, GLFW_KEY_F) == GLFW_PRESS;
+
+        if (bIsFPressed && !bWasFPressed)
+        {
+            sGridStyle.bDrawPlane = !sGridStyle.bDrawPlane;
+            gridRenderer.SetStyle(sGridStyle);
+
+            std::cout << "Grid plane fill: "
+                << (sGridStyle.bDrawPlane ? "enabled" : "disabled")
+                << '\n';
+        }
+
+        bWasFPressed = bIsFPressed;
+
         int nFramebufferWidth = 0;
         int nFramebufferHeight = 0;
 
@@ -718,6 +739,7 @@ int main()
 
         glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
 
+        // nanoCAD-like тёмный сине-серый фон.
         glClearColor(0.145f, 0.176f, 0.223f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

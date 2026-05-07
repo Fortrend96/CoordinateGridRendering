@@ -3,6 +3,11 @@
 CGridRenderer::CGridRenderer()
     : m_nFullscreenVao(0)
 {
+    m_sGeometry.vOrigin = glm::dvec3(0.0, 0.0, 0.0);
+    m_sGeometry.vAxisX = glm::dvec3(1.0, 0.0, 0.0);
+    m_sGeometry.vAxisY = glm::dvec3(0.0, 1.0, 0.0);
+    m_sGeometry.vNormal = glm::dvec3(0.0, 0.0, 1.0);
+
     m_sStyle.dMinorStep = 1.0;
     m_sStyle.dMajorStep = 10.0;
 
@@ -15,8 +20,11 @@ CGridRenderer::CGridRenderer()
     // значит смотрим почти вдоль плоскости.
     m_sStyle.dMinViewNormalDot = 0.087;
 
-    // По умолчанию выключаем clamp depth.
     m_sStyle.bClampDepth = false;
+
+    // По умолчанию заливка плоскости выключена.
+    // Фон рисуется через glClearColor, а шейдер сетки выводит только линии.
+    m_sStyle.bDrawPlane = false;
 
     m_sStyle.bIsBounded = false;
     m_sStyle.vBounds = glm::dvec4(-25.0, -25.0, 25.0, 25.0);
@@ -115,22 +123,20 @@ const SGridStyle& CGridRenderer::GetStyle() const
 void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrameData& sFrameData) const
 {
     shaderProgram.Use();
-
     // Матрицы и размер viewport.
     shaderProgram.SetUniformMat4d("uViewProj", sFrameData.mViewProj);
     shaderProgram.SetUniformMat4d("uInvViewProj", sFrameData.mInvViewProj);
     shaderProgram.SetUniformVec2d("uViewportSize", sFrameData.vViewportSize);
-
     // Геометрия сетки.
     shaderProgram.SetUniformVec3d("uGridOrigin", m_sGeometry.vOrigin);
     shaderProgram.SetUniformVec3d("uGridAxisX", m_sGeometry.vAxisX);
     shaderProgram.SetUniformVec3d("uGridAxisY", m_sGeometry.vAxisY);
     shaderProgram.SetUniformVec3d("uGridNormal", m_sGeometry.vNormal);
-
     // Плохой угол обзора и режим глубины.
     shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
     shaderProgram.SetUniform1i("uClampDepth", m_sStyle.bClampDepth ? 1 : 0);
-
+    shaderProgram.SetUniform1i("uDrawPlane", m_sStyle.bDrawPlane ? 1 : 0);
+    
     // Infinite / bounded.
     shaderProgram.SetUniform1i("uIsBounded", m_sStyle.bIsBounded ? 1 : 0);
     shaderProgram.SetUniformVec4d("uGridBounds", m_sStyle.vBounds);
@@ -163,7 +169,6 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniformVec4f("uYAxisColorBottom", m_sStyle.vYAxisColorBottom);
 
     glBindVertexArray(m_nFullscreenVao);
-
     // Один fullscreen triangle.
     // Реальная сетка вычисляется во fragment shader.
     glDrawArrays(GL_TRIANGLES, 0, 3);
