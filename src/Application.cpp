@@ -24,6 +24,8 @@ CApplication::CApplication()
     , m_bWasCPressed(false)
     , m_bWasFPressed(false)
     , m_bWasGPressed(false)
+    , m_bShowDemoObjects(true)
+    , m_bWasOPressed(false)
     , m_bWasF1Pressed(false)
     , m_bWasF2Pressed(false)
     , m_bWasF3Pressed(false)
@@ -329,6 +331,19 @@ void CApplication::ProcessInput()
     }
 
     m_bWasGPressed = bIsGPressed;
+
+    const bool bIsOPressed = glfwGetKey(m_pWindow, GLFW_KEY_O) == GLFW_PRESS;
+
+    if (bIsOPressed && !m_bWasOPressed)
+    {
+        m_bShowDemoObjects = !m_bShowDemoObjects;
+
+        std::cout << "Demo objects: "
+            << (m_bShowDemoObjects ? "enabled" : "disabled")
+            << '\n';
+    }
+
+    m_bWasOPressed = bIsOPressed;
 }
 
 void CApplication::RenderFrame()
@@ -391,13 +406,7 @@ void CApplication::RenderFrame()
         dFarPlane
     );
 
-    // OpenGL convention:
-    //
-    // clip = projection * view * worldPosition
     const glm::dmat4 mViewProj = mProjection * mView;
-
-    // Обратная view-projection нужна сетке:
-    // fragment shader восстанавливает луч текущего пикселя через gl_FragCoord.
     const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
 
     // -------------------------------------------------------------------------
@@ -424,15 +433,16 @@ void CApplication::RenderFrame()
     // -------------------------------------------------------------------------
     // 4. Рисуем модельные объекты тестовой сцены.
     //
-    // Это именно тестовые объекты для проверки взаимодействия сетки со сценой.
+    // Эти объекты нужны только для проверки взаимодействия аналитической сетки
+    // с обычной 3D-сценой через depth buffer.
+    //
+    // Если m_bShowDemoObjects == false, то объекты не рисуются,
+    // а сетка проверяется сама по себе.
     //
     // Объекты должны:
     // - проходить depth test;
     // - писать глубину в depth buffer;
     // - рисоваться без blending, потому что они непрозрачные.
-    //
-    // После этого сетка будет рисоваться поверх той же сцены,
-    // но с включённым Z-test и отключённой записью глубины.
     // -------------------------------------------------------------------------
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -441,18 +451,13 @@ void CApplication::RenderFrame()
 
     glDisable(GL_BLEND);
 
-    m_demoSceneRenderer.Render(
-        m_sceneObjectShaderProgram,
-        sFrameData,
-        m_sGridGeometry
-    );
-
-    GLenum eError = glGetError();
-
-    if (eError != GL_NO_ERROR)
+    if (m_bShowDemoObjects)
     {
-        std::cerr << "OpenGL error after demo objects render: 0x"
-            << std::hex << eError << std::dec << '\n';
+        m_demoSceneRenderer.Render(
+            m_sceneObjectShaderProgram,
+            sFrameData,
+            m_sGridGeometry
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -767,6 +772,7 @@ void CApplication::PrintControls() const
     std::cout << "  C                                  : toggle manual depth clamp\n";
     std::cout << "  F                                  : toggle grid plane fill\n";
     std::cout << "  G                                  : toggle depth zones debug view\n";
+    std::cout << "  O                                  : toggle demo objects\n";
     std::cout << "  1                                  : simple grid\n";
     std::cout << "  2                                  : large offset grid\n";
     std::cout << "  3                                  : rotated grid\n";
@@ -798,6 +804,9 @@ void CApplication::PrintInitialState() const
         << '\n';
     std::cout << "Depth zones debug: "
         << (m_sGridStyle.bDebugDepthZones ? "enabled" : "disabled")
+        << '\n';
+    std::cout << "Demo objects: "
+        << (m_bShowDemoObjects ? "enabled" : "disabled")
         << '\n';
 }
 
