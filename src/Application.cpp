@@ -26,6 +26,8 @@ CApplication::CApplication()
     , m_bWasGPressed(false)
     , m_bShowDemoObjects(true)
     , m_bWasOPressed(false)
+    , m_bGridXrayMode(false)
+    , m_bWasXPressed(false)
     , m_bWasF1Pressed(false)
     , m_bWasF2Pressed(false)
     , m_bWasF3Pressed(false)
@@ -344,6 +346,19 @@ void CApplication::ProcessInput()
     }
 
     m_bWasOPressed = bIsOPressed;
+
+    const bool bIsXPressed = glfwGetKey(m_pWindow, GLFW_KEY_X) == GLFW_PRESS;
+
+    if (bIsXPressed && !m_bWasXPressed)
+    {
+        m_bGridXrayMode = !m_bGridXrayMode;
+
+        std::cout << "Grid x-ray mode: "
+            << (m_bGridXrayMode ? "enabled" : "disabled")
+            << '\n';
+    }
+
+    m_bWasXPressed = bIsXPressed;
 }
 
 void CApplication::RenderFrame()
@@ -463,16 +478,19 @@ void CApplication::RenderFrame()
     // -------------------------------------------------------------------------
     // 5. Рисуем аналитическую сетку.
     //
-    // Сетка должна:
-    // - использовать тот же view/projection;
-    // - участвовать в depth test;
-    // - НЕ писать глубину в depth buffer;
-    // - использовать blending, потому что линии полупрозрачные.
+    // Возможны два режима:
     //
-    // Такое поведение нужно для CAD-like результата:
-    // - модельные объекты могут перекрывать сетку;
-    // - сетка не портит depth buffer для последующих проходов;
-    // - gl_FragDepth сетки проверяется относительно уже нарисованной сцены.
+    // 1) Обычный режим:
+    //    - сетка участвует в depth test;
+    //    - модельные объекты могут перекрывать сетку;
+    //    - сетка не пишет глубину в depth buffer.
+    //
+    // 2) X-ray режим:
+    //    - сетка рисуется поверх объектов;
+    //    - depth test для сетки отключается;
+    //    - визуально сетка проходит через фигуры.
+    //
+    // В обоих режимах сетка НЕ пишет глубину.
     // -------------------------------------------------------------------------
     m_gridRenderer.SetGeometry(m_sGridGeometry);
 
@@ -483,14 +501,39 @@ void CApplication::RenderFrame()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    // Сетка не должна писать глубину в depth buffer.
     glDepthMask(GL_FALSE);
+
+    if (m_bGridXrayMode)
+    {
+        // X-ray режим:
+        //
+        // Сетка проходит через фигуры, потому что depth test отключён.
+        // Объекты не могут перекрыть линии сетки.
+        //
+        // Это полезно как отдельный визуальный режим, но не заменяет
+        // основной режим проверки взаимодействия сетки со сценой.
+        glDisable(GL_DEPTH_TEST);
+    }
+    else
+    {
+        // Обычный режим:
+        //
+        // Сетка взаимодействует с объектами через depth buffer.
+        // Если объект ближе камеры, он перекрывает сетку.
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+    }
 
     m_gridRenderer.Render(
         m_gridShaderProgram,
         sFrameData
     );
 
+    // Возвращаем стандартное состояние depth.
     glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
 
     // -------------------------------------------------------------------------
     // 6. Рисуем маркер начала координат.
@@ -516,6 +559,7 @@ void CApplication::RenderFrame()
     // -------------------------------------------------------------------------
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
     glEnable(GL_BLEND);
 }
 
@@ -773,6 +817,7 @@ void CApplication::PrintControls() const
     std::cout << "  F                                  : toggle grid plane fill\n";
     std::cout << "  G                                  : toggle depth zones debug view\n";
     std::cout << "  O                                  : toggle demo objects\n";
+    std::cout << "  X                                  : toggle grid x-ray mode\n";
     std::cout << "  1                                  : simple grid\n";
     std::cout << "  2                                  : large offset grid\n";
     std::cout << "  3                                  : rotated grid\n";
@@ -786,27 +831,41 @@ void CApplication::PrintInitialState() const
     std::cout << "Camera view: "
         << GetCameraViewModeName(m_eCameraViewMode)
         << '\n';
-    std::cout << "Grid preset: " << GetGridPresetName(m_eCurrentPreset) << '\n';
+
+    std::cout << "Grid preset: "
+        << GetGridPresetName(m_eCurrentPreset)
+        << '\n';
+
     std::cout << "Projection: "
         << (m_bUseOrthographicProjection ? "orthographic" : "perspective")
         << '\n';
+
     std::cout << "Grid bounds: "
         << (m_sGridStyle.bIsBounded ? "bounded" : "infinite")
         << '\n';
+
     std::cout << "Grid mode: "
         << (m_sGridStyle.bDrawDots ? "dots" : "lines")
         << '\n';
+
     std::cout << "Depth clamp: "
         << (m_sGridStyle.bClampDepth ? "enabled" : "disabled")
         << '\n';
+
     std::cout << "Grid plane fill: "
         << (m_sGridStyle.bDrawPlane ? "enabled" : "disabled")
         << '\n';
+
     std::cout << "Depth zones debug: "
         << (m_sGridStyle.bDebugDepthZones ? "enabled" : "disabled")
         << '\n';
+
     std::cout << "Demo objects: "
         << (m_bShowDemoObjects ? "enabled" : "disabled")
+        << '\n';
+
+    std::cout << "Grid x-ray mode: "
+        << (m_bGridXrayMode ? "enabled" : "disabled")
         << '\n';
 }
 
