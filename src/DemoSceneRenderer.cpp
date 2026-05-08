@@ -564,47 +564,106 @@ void CDemoSceneRenderer::BuildSceneInstances()
     // 0 = cube
     // 1 = sphere
     // 2 = cylinder
+    //
+    // Важно:
+    // все объекты задаются в локальной системе координат сетки:
+    //
+    // local X = ось сетки X;
+    // local Y = ось сетки Y;
+    // local Z = нормаль сетки.
+    //
+    // Плоскость координатной сетки находится при local Z = 0.
+    //
+    // Поэтому, чтобы плоскость сетки проходила ровно через середину фигуры,
+    // центр фигуры нужно расположить на Z = 0.
 
-    // Куб стоит на плоскости сетки.
+    // -------------------------------------------------------------------------
+    // Куб.
+    //
+    // Единичный куб изначально имеет размеры:
+    // X: [-0.5; 0.5]
+    // Y: [-0.5; 0.5]
+    // Z: [-0.5; 0.5]
+    //
+    // После scale(1.6, 1.6, 1.6):
+    // Z: [-0.8; 0.8]
+    //
+    // Центр куба находится в Z = 0,
+    // поэтому плоскость сетки проходит ровно через его середину.
+    // -------------------------------------------------------------------------
     {
         SDemoInstance sInstance{};
         sInstance.nMeshIndex = 0;
         sInstance.vBaseColor = glm::vec3(0.82f, 0.62f, 0.32f);
 
         glm::dmat4 mLocalModel(1.0);
-        mLocalModel = glm::translate(mLocalModel, glm::dvec3(-6.0, -3.0, 2.0));
-        mLocalModel = glm::scale(mLocalModel, glm::dvec3(4.0, 4.0, 4.0));
+        mLocalModel = glm::translate(
+            mLocalModel,
+            glm::dvec3(-4.0, -2.0, 0.0)
+        );
+        mLocalModel = glm::scale(
+            mLocalModel,
+            glm::dvec3(1.6, 1.6, 1.6)
+        );
 
         sInstance.mLocalModelMatrix = mLocalModel;
         m_arrInstances.push_back(sInstance);
     }
 
-    // Сфера немного пересекает плоскость сетки.
+    // -------------------------------------------------------------------------
+    // Сфера.
     //
-    // Это хороший тест:
-    // часть сферы выше сетки, часть ниже.
+    // Единичная сфера изначально имеет радиус 1:
+    // Z: [-1.0; 1.0]
+    //
+    // Центр сферы находится в Z = 0,
+    // поэтому плоскость сетки проходит через её экватор.
+    // -------------------------------------------------------------------------
     {
         SDemoInstance sInstance{};
         sInstance.nMeshIndex = 1;
         sInstance.vBaseColor = glm::vec3(0.28f, 0.62f, 0.88f);
 
         glm::dmat4 mLocalModel(1.0);
-        mLocalModel = glm::translate(mLocalModel, glm::dvec3(0.0, 5.0, 2.5));
-        mLocalModel = glm::scale(mLocalModel, glm::dvec3(2.5, 2.5, 2.5));
+        mLocalModel = glm::translate(
+            mLocalModel,
+            glm::dvec3(0.0, 2.8, 0.0)
+        );
+        mLocalModel = glm::scale(
+            mLocalModel,
+            glm::dvec3(1.0, 1.0, 1.0)
+        );
 
         sInstance.mLocalModelMatrix = mLocalModel;
         m_arrInstances.push_back(sInstance);
     }
 
-    // Цилиндр стоит на плоскости сетки.
+    // -------------------------------------------------------------------------
+    // Цилиндр.
+    //
+    // Единичный цилиндр изначально имеет высоту:
+    // Z: [-0.5; 0.5]
+    //
+    // После scale(0.9, 0.9, 2.0):
+    // Z: [-1.0; 1.0]
+    //
+    // Центр цилиндра находится в Z = 0,
+    // поэтому плоскость сетки проходит ровно через середину цилиндра.
+    // -------------------------------------------------------------------------
     {
         SDemoInstance sInstance{};
         sInstance.nMeshIndex = 2;
         sInstance.vBaseColor = glm::vec3(0.48f, 0.82f, 0.42f);
 
         glm::dmat4 mLocalModel(1.0);
-        mLocalModel = glm::translate(mLocalModel, glm::dvec3(6.0, -3.0, 2.5));
-        mLocalModel = glm::scale(mLocalModel, glm::dvec3(2.0, 2.0, 5.0));
+        mLocalModel = glm::translate(
+            mLocalModel,
+            glm::dvec3(4.0, -1.5, 0.0)
+        );
+        mLocalModel = glm::scale(
+            mLocalModel,
+            glm::dvec3(0.9, 0.9, 2.0)
+        );
 
         sInstance.mLocalModelMatrix = mLocalModel;
         m_arrInstances.push_back(sInstance);
