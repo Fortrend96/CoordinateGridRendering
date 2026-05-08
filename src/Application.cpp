@@ -447,6 +447,14 @@ void CApplication::RenderFrame()
         m_sGridGeometry
     );
 
+    GLenum eError = glGetError();
+
+    if (eError != GL_NO_ERROR)
+    {
+        std::cerr << "OpenGL error after demo objects render: 0x"
+            << std::hex << eError << std::dec << '\n';
+    }
+
     // -------------------------------------------------------------------------
     // 5. Рисуем аналитическую сетку.
     //
