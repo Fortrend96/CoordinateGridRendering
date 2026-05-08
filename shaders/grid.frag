@@ -141,12 +141,37 @@ double DistanceToGridLine(double x, double step)
 }
 
 // Маска линии с антиалиасингом через fwidth.
-float CreateLineMask(double distanceToLine, float pixelWidth, float thickness)
+float CreateLineMask(
+    double dDistanceToLine,
+    float fCoordinatePixelWidth,
+    float fThicknessPixels
+)
 {
+    // Переводим расстояние до линии из координат сетки в пиксели.
+    //
+    // fCoordinatePixelWidth показывает, сколько единиц сетки приходится
+    // примерно на один экранный пиксель.
+    //
+    // Если distanceToLine = fCoordinatePixelWidth,
+    // значит линия примерно в одном пикселе от текущего фрагмента.
+    float fDistancePixels =
+        float(dDistanceToLine) / max(fCoordinatePixelWidth, 1e-6);
+
+    // Половина толщины линии в пикселях.
+    //
+    // Например:
+    // fThicknessPixels = 1.0 означает линию примерно в 1 пиксель.
+    float fHalfThickness = max(fThicknessPixels * 0.5, 0.35);
+
+    // Ширина зоны антиалиасинга.
+    //
+    // Держим её не нулевой, чтобы линия не превращалась в резкую ступеньку.
+    float fAntiAliasWidth = 0.75;
+
     return 1.0 - smoothstep(
-        0.0,
-        pixelWidth * thickness,
-        float(distanceToLine)
+        fHalfThickness,
+        fHalfThickness + fAntiAliasWidth,
+        fDistancePixels
     );
 }
 

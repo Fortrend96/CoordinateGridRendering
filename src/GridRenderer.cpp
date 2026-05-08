@@ -133,9 +133,9 @@ CGridRenderer::CGridRenderer()
     m_sStyle.dMinorStep = 1.0;
     m_sStyle.dMajorStep = 10.0;
 
-    m_sStyle.fMinorThickness = 0.9f;
-    m_sStyle.fMajorThickness = 1.2f;
-    m_sStyle.fAxisThickness = 1.8f;
+    m_sStyle.fMinorThickness = 0.75f;
+    m_sStyle.fMajorThickness = 1.05f;
+    m_sStyle.fAxisThickness = 1.6f;
 
     // Минимально допустимый угол взгляда к плоскости сетки.
     //
@@ -174,7 +174,7 @@ CGridRenderer::CGridRenderer()
 
     // Примерная желаемая плотность малой сетки.
     // 18 px даёт читаемую сетку без чрезмерной плотности.
-    m_sStyle.dTargetMinorStepPixels = 18.0;
+    m_sStyle.dTargetMinorStepPixels = 28.0;
 
     // Каждая 10-я малая линия становится большой.
     m_sStyle.nMajorLineFrequency = 10;
@@ -339,12 +339,15 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
     const double dMinorStepPixels = dMinorStep * dPixelsPerWorldUnit;
     const double dMajorStepPixels = dMajorStep * dPixelsPerWorldUnit;
 
-    // Если линии стали слишком плотными, слой можно отключить.
+    // Не рисуем minor-сетку, если она становится слишком плотной на экране.
     //
-    // Сейчас порог небольшой, потому что сам adaptive step уже старается
-    // держать minor grid около dTargetMinorStepPixels.
-    m_sStyle.bShowMinorGrid = dMinorStepPixels >= 4.0;
-    m_sStyle.bShowMajorGrid = dMajorStepPixels >= 4.0;
+    // Малые линии при расстоянии меньше ~10 px визуально начинают давать муар
+    // и мерцание. Лучше скрыть minor layer и оставить major layer.
+    m_sStyle.bShowMinorGrid = dMinorStepPixels >= 14.0;
+
+    // Major-сетка может быть чуть плотнее, потому что она реже сама по себе
+    // и важна для ориентации пользователя.
+    m_sStyle.bShowMajorGrid = dMajorStepPixels >= 8.0;
 
     // Оси X/Y оставляем видимыми всегда.
     m_sStyle.bShowAxes = true;
