@@ -3,22 +3,20 @@
 layout(location = 0) out vec4 outColor;
 
 // -----------------------------------------------------------------------------
-// Данные луча из vertex shader
-// -----------------------------------------------------------------------------
-
-// Локальная точка луча на near plane относительно uGridOrigin.
-noperspective in vec3 vNearLocal;
-
-// Локальная точка луча на far plane относительно uGridOrigin.
-noperspective in vec3 vFarLocal;
-
-// -----------------------------------------------------------------------------
-// Матрицы
+// Матрицы и viewport
 // -----------------------------------------------------------------------------
 
 // View-projection матрица.
 // Нужна для вычисления настоящей глубины фрагмента сетки.
 uniform dmat4 uViewProj;
+
+// Обратная view-projection матрица.
+// Нужна для восстановления world-space луча из screen-space пикселя.
+uniform dmat4 uInvViewProj;
+
+// Размер framebuffer в пикселях.
+// Используется для восстановления NDC из gl_FragCoord.
+uniform dvec2 uViewportSize;
 
 // -----------------------------------------------------------------------------
 // Геометрия сетки
@@ -174,17 +172,42 @@ float CreateDotMask(
 void main()
 {
     // -------------------------------------------------------------------------
-    // 1. Луч камеры в координатах относительно origin сетки
+    // 1. Восстановление луча камеры для текущего пикселя
     // -------------------------------------------------------------------------
 
-    // Эти точки уже восстановлены в vertex shader.
+    // Восстанавливаем NDC текущего пикселя напрямую из gl_FragCoord.
     //
-    // Важно:
-    // vertex shader сначала делает world - uGridOrigin в double,
-    // и только потом передаёт локальные значения дальше.
-    // Так мы уменьшаем влияние больших мировых координат.
-    dvec3 rayOriginLocal = dvec3(vNearLocal);
-    dvec3 rayFarLocal = dvec3(vFarLocal);
+    // Это важнее, чем интерполировать near/far точки через fullscreen quad:
+    // quad состоит из двух треугольников, и на диагонали могут появляться
+    // отличия интерполяции/производных. Для аналитической сетки это заметно
+    // как мерцание, неоднородность и "волнистость" линий.
+    //
+    // gl_FragCoord.xy — координата текущего фрагмента во framebuffer.
+    // Приводим её к OpenGL NDC:
+    // x: [0; width]  -> [-1; 1]
+    // y: [0; height] -> [-1; 1]
+    dvec2 vNdc = dvec2(
+        (double(gl_FragCoord.x) / uViewportSize.x) * 2.0 - 1.0,
+        (double(gl_FragCoord.y) / uViewportSize.y) * 2.0 - 1.0
+    );
+
+    // OpenGL NDC:
+    // near plane = -1
+    // far plane  =  1
+    dvec4 vNearClip = dvec4(vNdc.x, vNdc.y, -1.0, 1.0);
+    dvec4 vFarClip  = dvec4(vNdc.x, vNdc.y,  1.0, 1.0);
+
+    dvec4 vNearWorld = uInvViewProj * vNearClip;
+    dvec4 vFarWorld  = uInvViewProj * vFarClip;
+
+    vNearWorld /= vNearWorld.w;
+    vFarWorld  /= vFarWorld.w;
+
+    // Переводим координаты в систему относительно origin сетки.
+    //
+    // Это уменьшает проблемы точности при больших world-space координатах.
+    dvec3 rayOriginLocal = vNearWorld.xyz - uGridOrigin;
+    dvec3 rayFarLocal = vFarWorld.xyz - uGridOrigin;
 
     dvec3 rayDir = normalize(rayFarLocal - rayOriginLocal);
 
@@ -431,7 +454,6 @@ void main()
     // - far zone: точка ушла за far plane.
     bool bNearDepthZone = rawDepth < safeMinDepth;
     bool bFarDepthZone = rawDepth > safeMaxDepth;
-    bool bNormalDepthZone = !bNearDepthZone && !bFarDepthZone;
 
     double depth = rawDepth;
 

@@ -6,16 +6,12 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 CShaderProgram::CShaderProgram()
     : m_nProgramId(0)
 {
-}
-
-CShaderProgram::CShaderProgram(const std::string& szVertexShaderPath, const std::string& szFragmentShaderPath)
-    : m_nProgramId(0)
-{
-    LoadFromFiles(szVertexShaderPath, szFragmentShaderPath);
 }
 
 CShaderProgram::~CShaderProgram()
@@ -42,191 +38,50 @@ CShaderProgram& CShaderProgram::operator=(CShaderProgram&& other) noexcept
     return *this;
 }
 
-void CShaderProgram::LoadFromFiles(const std::string& szVertexShaderPath, const std::string& szFragmentShaderPath)
+void CShaderProgram::LoadFromFiles(
+    const std::string& strVertexShaderPath,
+    const std::string& strFragmentShaderPath
+)
 {
     Destroy();
 
-    m_nProgramId = CreateProgram(szVertexShaderPath, szFragmentShaderPath);
+    const std::string strVertexSource = ReadTextFile(strVertexShaderPath);
+    const std::string strFragmentSource = ReadTextFile(strFragmentShaderPath);
+
+    const GLuint nVertexShaderId = CompileShader(
+        GL_VERTEX_SHADER,
+        strVertexSource,
+        strVertexShaderPath
+    );
+
+    const GLuint nFragmentShaderId = CompileShader(
+        GL_FRAGMENT_SHADER,
+        strFragmentSource,
+        strFragmentShaderPath
+    );
+
+    m_nProgramId = glCreateProgram();
+
+    glAttachShader(m_nProgramId, nVertexShaderId);
+    glAttachShader(m_nProgramId, nFragmentShaderId);
+
+    glLinkProgram(m_nProgramId);
+
+    glDetachShader(m_nProgramId, nVertexShaderId);
+    glDetachShader(m_nProgramId, nFragmentShaderId);
+
+    glDeleteShader(nVertexShaderId);
+    glDeleteShader(nFragmentShaderId);
+
+    CheckProgramLinkStatus(
+        m_nProgramId,
+        strVertexShaderPath + " + " + strFragmentShaderPath
+    );
 }
 
 void CShaderProgram::Use() const
 {
     glUseProgram(m_nProgramId);
-}
-
-GLuint CShaderProgram::GetProgramId() const
-{
-    return m_nProgramId;
-}
-
-void CShaderProgram::SetUniformMat4d(const char* pszName, const glm::dmat4& mValue) const
-{
-    glUniformMatrix4dv(
-        GetUniformLocation(pszName),
-        1,
-        GL_FALSE,
-        glm::value_ptr(mValue)
-    );
-}
-
-void CShaderProgram::SetUniformVec2d(const char* pszName, const glm::dvec2& vValue) const
-{
-    glUniform2d(
-        GetUniformLocation(pszName),
-        vValue.x,
-        vValue.y
-    );
-}
-
-void CShaderProgram::SetUniformVec3d(const char* pszName, const glm::dvec3& vValue) const
-{
-    glUniform3d(
-        GetUniformLocation(pszName),
-        vValue.x,
-        vValue.y,
-        vValue.z
-    );
-}
-
-void CShaderProgram::SetUniformVec4f(const char* pszName, const glm::vec4& vValue) const
-{
-    glUniform4f(
-        GetUniformLocation(pszName),
-        vValue.x,
-        vValue.y,
-        vValue.z,
-        vValue.w
-    );
-}
-
-void CShaderProgram::SetUniform1d(const char* pszName, double dValue) const
-{
-    glUniform1d(GetUniformLocation(pszName), dValue);
-}
-
-void CShaderProgram::SetUniform1f(const char* pszName, float fValue) const
-{
-    glUniform1f(GetUniformLocation(pszName), fValue);
-}
-
-void CShaderProgram::SetUniformVec4d(const char* pszName, const glm::dvec4& vValue) const
-{
-    glUniform4d(
-        GetUniformLocation(pszName),
-        vValue.x,
-        vValue.y,
-        vValue.z,
-        vValue.w
-    );
-}
-
-void CShaderProgram::SetUniform1i(const char* pszName, int nValue) const
-{
-    glUniform1i(GetUniformLocation(pszName), nValue);
-}
-
-std::string CShaderProgram::ReadTextFile(const std::string& szFilePath)
-{
-    std::ifstream file(szFilePath);
-
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Failed to open file: " + szFilePath);
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-
-    return buffer.str();
-}
-
-GLuint CShaderProgram::CompileShader(
-    GLenum eShaderType,
-    const std::string& szSource,
-    const std::string& szDebugName
-)
-{
-    GLuint nShader = glCreateShader(eShaderType);
-
-    const char* pszSource = szSource.c_str();
-    glShaderSource(nShader, 1, &pszSource, nullptr);
-    glCompileShader(nShader);
-
-    GLint nSuccess = GL_FALSE;
-    glGetShaderiv(nShader, GL_COMPILE_STATUS, &nSuccess);
-
-    if (nSuccess != GL_TRUE)
-    {
-        GLint nLogLength = 0;
-        glGetShaderiv(nShader, GL_INFO_LOG_LENGTH, &nLogLength);
-
-        std::string szLog;
-        szLog.resize(static_cast<size_t>(nLogLength));
-
-        glGetShaderInfoLog(nShader, nLogLength, nullptr, szLog.data());
-
-        glDeleteShader(nShader);
-
-        throw std::runtime_error("Failed to compile shader: " + szDebugName + "\n" + szLog);
-    }
-
-    return nShader;
-}
-
-GLuint CShaderProgram::CreateProgram(
-    const std::string& szVertexShaderPath,
-    const std::string& szFragmentShaderPath
-)
-{
-    const std::string szVertexSource = ReadTextFile(szVertexShaderPath);
-    const std::string szFragmentSource = ReadTextFile(szFragmentShaderPath);
-
-    GLuint nVertexShader = CompileShader(GL_VERTEX_SHADER, szVertexSource, szVertexShaderPath);
-    GLuint nFragmentShader = CompileShader(GL_FRAGMENT_SHADER, szFragmentSource, szFragmentShaderPath);
-
-    GLuint nProgram = glCreateProgram();
-
-    glAttachShader(nProgram, nVertexShader);
-    glAttachShader(nProgram, nFragmentShader);
-    glLinkProgram(nProgram);
-
-    glDetachShader(nProgram, nVertexShader);
-    glDetachShader(nProgram, nFragmentShader);
-
-    glDeleteShader(nVertexShader);
-    glDeleteShader(nFragmentShader);
-
-    GLint nSuccess = GL_FALSE;
-    glGetProgramiv(nProgram, GL_LINK_STATUS, &nSuccess);
-
-    if (nSuccess != GL_TRUE)
-    {
-        GLint nLogLength = 0;
-        glGetProgramiv(nProgram, GL_INFO_LOG_LENGTH, &nLogLength);
-
-        std::string szLog;
-        szLog.resize(static_cast<size_t>(nLogLength));
-
-        glGetProgramInfoLog(nProgram, nLogLength, nullptr, szLog.data());
-
-        glDeleteProgram(nProgram);
-
-        throw std::runtime_error("Failed to link shader program\n" + szLog);
-    }
-
-    return nProgram;
-}
-
-GLint CShaderProgram::GetUniformLocation(const char* pszName) const
-{
-    GLint nLocation = glGetUniformLocation(m_nProgramId, pszName);
-
-    if (nLocation == -1)
-    {
-        std::cerr << "Warning: uniform not found: " << pszName << '\n';
-    }
-
-    return nLocation;
 }
 
 void CShaderProgram::Destroy()
@@ -236,4 +91,276 @@ void CShaderProgram::Destroy()
         glDeleteProgram(m_nProgramId);
         m_nProgramId = 0;
     }
+}
+
+GLuint CShaderProgram::GetProgramId() const
+{
+    return m_nProgramId;
+}
+
+void CShaderProgram::SetUniform1i(const std::string& strName, int nValue) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform1i(nLocation, nValue);
+}
+
+void CShaderProgram::SetUniform1f(const std::string& strName, float fValue) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform1f(nLocation, fValue);
+}
+
+void CShaderProgram::SetUniform1d(const std::string& strName, double dValue) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform1d(nLocation, dValue);
+}
+
+void CShaderProgram::SetUniformVec4f(
+    const std::string& strName,
+    const glm::vec4& vValue
+) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform4fv(
+        nLocation,
+        1,
+        glm::value_ptr(vValue)
+    );
+}
+
+void CShaderProgram::SetUniformVec2d(
+    const std::string& strName,
+    const glm::dvec2& vValue
+) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform2d(
+        nLocation,
+        vValue.x,
+        vValue.y
+    );
+}
+
+void CShaderProgram::SetUniformVec3d(
+    const std::string& strName,
+    const glm::dvec3& vValue
+) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform3d(
+        nLocation,
+        vValue.x,
+        vValue.y,
+        vValue.z
+    );
+}
+
+void CShaderProgram::SetUniformVec4d(
+    const std::string& strName,
+    const glm::dvec4& vValue
+) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform4d(
+        nLocation,
+        vValue.x,
+        vValue.y,
+        vValue.z,
+        vValue.w
+    );
+}
+
+void CShaderProgram::SetUniformMat4d(
+    const std::string& strName,
+    const glm::dmat4& mValue
+) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniformMatrix4dv(
+        nLocation,
+        1,
+        GL_FALSE,
+        glm::value_ptr(mValue)
+    );
+}
+
+std::string CShaderProgram::ReadTextFile(const std::string& strPath)
+{
+    std::ifstream fileStream(strPath);
+
+    if (!fileStream.is_open())
+    {
+        throw std::runtime_error("Failed to open file: " + strPath);
+    }
+
+    std::stringstream stringStream;
+    stringStream << fileStream.rdbuf();
+
+    return stringStream.str();
+}
+
+GLuint CShaderProgram::CompileShader(
+    GLenum eShaderType,
+    const std::string& strSource,
+    const std::string& strDebugName
+)
+{
+    const GLuint nShaderId = glCreateShader(eShaderType);
+
+    const char* pszSource = strSource.c_str();
+
+    glShaderSource(
+        nShaderId,
+        1,
+        &pszSource,
+        nullptr
+    );
+
+    glCompileShader(nShaderId);
+
+    GLint nCompileStatus = GL_FALSE;
+
+    glGetShaderiv(
+        nShaderId,
+        GL_COMPILE_STATUS,
+        &nCompileStatus
+    );
+
+    if (nCompileStatus != GL_TRUE)
+    {
+        GLint nInfoLogLength = 0;
+
+        glGetShaderiv(
+            nShaderId,
+            GL_INFO_LOG_LENGTH,
+            &nInfoLogLength
+        );
+
+        std::vector<char> arrInfoLog(
+            static_cast<std::size_t>(std::max(nInfoLogLength, 1))
+        );
+
+        glGetShaderInfoLog(
+            nShaderId,
+            nInfoLogLength,
+            nullptr,
+            arrInfoLog.data()
+        );
+
+        std::string strInfoLog(arrInfoLog.data());
+
+        glDeleteShader(nShaderId);
+
+        throw std::runtime_error(
+            "Shader compilation failed: " + strDebugName + "\n" + strInfoLog
+        );
+    }
+
+    return nShaderId;
+}
+
+void CShaderProgram::CheckProgramLinkStatus(
+    GLuint nProgramId,
+    const std::string& strDebugName
+)
+{
+    GLint nLinkStatus = GL_FALSE;
+
+    glGetProgramiv(
+        nProgramId,
+        GL_LINK_STATUS,
+        &nLinkStatus
+    );
+
+    if (nLinkStatus != GL_TRUE)
+    {
+        GLint nInfoLogLength = 0;
+
+        glGetProgramiv(
+            nProgramId,
+            GL_INFO_LOG_LENGTH,
+            &nInfoLogLength
+        );
+
+        std::vector<char> arrInfoLog(
+            static_cast<std::size_t>(std::max(nInfoLogLength, 1))
+        );
+
+        glGetProgramInfoLog(
+            nProgramId,
+            nInfoLogLength,
+            nullptr,
+            arrInfoLog.data()
+        );
+
+        std::string strInfoLog(arrInfoLog.data());
+
+        throw std::runtime_error(
+            "Shader program link failed: " + strDebugName + "\n" + strInfoLog
+        );
+    }
+}
+
+GLint CShaderProgram::GetUniformLocation(const std::string& strName) const
+{
+    const GLint nLocation = glGetUniformLocation(
+        m_nProgramId,
+        strName.c_str()
+    );
+
+    if (nLocation < 0)
+    {
+        std::cerr << "Warning: uniform not found: " << strName << '\n';
+    }
+
+    return nLocation;
 }

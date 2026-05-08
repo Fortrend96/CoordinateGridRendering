@@ -356,6 +356,7 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
 
     shaderProgram.SetUniformMat4d("uViewProj", sFrameData.mViewProj);
     shaderProgram.SetUniformMat4d("uInvViewProj", sFrameData.mInvViewProj);
+    shaderProgram.SetUniformVec2d("uViewportSize", sFrameData.vViewportSize);
 
     shaderProgram.SetUniformVec3d("uGridOrigin", m_sGeometry.vOrigin);
     shaderProgram.SetUniformVec3d("uGridAxisX", m_sGeometry.vAxisX);
