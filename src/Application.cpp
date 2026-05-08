@@ -13,17 +13,29 @@ CApplication::CApplication()
     , m_nInitialWindowWidth(1280)
     , m_nInitialWindowHeight(720)
     , m_eCurrentPreset(EGridPreset::Simple)
+    , m_eCameraViewMode(ECameraViewMode::Top)
     , m_bUseOrthographicProjection(true)
     , m_dDefaultCameraDistance(24.0)
-    , m_dDefaultCameraYawRadians(glm::radians(0.0))
-    , m_dDefaultCameraPitchRadians(glm::radians(89.9))
+    , m_dDefaultCameraYawRadians(0.0)
+    , m_dDefaultCameraPitchRadians(0.0)
     , m_bWasPPressed(false)
     , m_bWasBPressed(false)
     , m_bWasMPressed(false)
     , m_bWasCPressed(false)
     , m_bWasFPressed(false)
     , m_bWasGPressed(false)
+    , m_bWasF1Pressed(false)
+    , m_bWasF2Pressed(false)
+    , m_bWasF3Pressed(false)
+    , m_bWasF4Pressed(false)
+    , m_bWasF5Pressed(false)
 {
+    const SCameraViewModeSettings sInitialViewSettings =
+        GetCameraViewModeSettings(m_eCameraViewMode);
+
+    m_bUseOrthographicProjection = sInitialViewSettings.bUseOrthographicProjection;
+    m_dDefaultCameraYawRadians = sInitialViewSettings.dYawRadians;
+    m_dDefaultCameraPitchRadians = sInitialViewSettings.dPitchRadians;
 }
 
 CApplication::~CApplication()
@@ -130,17 +142,21 @@ void CApplication::InitializeScene()
     m_eCurrentPreset = EGridPreset::Simple;
     m_sGridGeometry = CreateGridGeometry(m_eCurrentPreset);
 
-    // —тартовый вид сверху.
+    //  амеру создаЄм с начальными параметрами.
     //
-    // ¬ажно:
-    // m_dDefaultCameraPitchRadians может потребовать подстройки,
-    // если реализаци€ COrbitCamera иначе трактует yaw/pitch.
+    // ѕосле создани€ сразу примен€ем €вный режим вида камеры через
+    // ApplyCameraViewMode(...), чтобы не смешивать:
+    // - тип проекции;
+    // - ориентацию камеры;
+    // - тестовые presets сетки.
     m_pCamera = std::make_unique<COrbitCamera>(
         m_sGridGeometry.vOrigin,
         m_dDefaultCameraDistance,
         m_dDefaultCameraYawRadians,
         m_dDefaultCameraPitchRadians
     );
+
+    ApplyCameraViewMode(m_eCameraViewMode);
 
     PrintInitialState();
 }
@@ -192,13 +208,53 @@ void CApplication::ProcessInput()
 
     if (glfwGetKey(m_pWindow, GLFW_KEY_R) == GLFW_PRESS && m_pCamera != nullptr)
     {
-        m_pCamera->Reset(
-            m_sGridGeometry.vOrigin,
-            m_dDefaultCameraDistance,
-            m_dDefaultCameraYawRadians,
-            m_dDefaultCameraPitchRadians
-        );
+        ApplyCameraViewMode(m_eCameraViewMode);
     }
+
+    const bool bIsF1Pressed = glfwGetKey(m_pWindow, GLFW_KEY_F1) == GLFW_PRESS;
+
+    if (bIsF1Pressed && !m_bWasF1Pressed)
+    {
+        ApplyCameraViewMode(ECameraViewMode::Top);
+    }
+
+    m_bWasF1Pressed = bIsF1Pressed;
+
+    const bool bIsF2Pressed = glfwGetKey(m_pWindow, GLFW_KEY_F2) == GLFW_PRESS;
+
+    if (bIsF2Pressed && !m_bWasF2Pressed)
+    {
+        ApplyCameraViewMode(ECameraViewMode::Front);
+    }
+
+    m_bWasF2Pressed = bIsF2Pressed;
+
+    const bool bIsF3Pressed = glfwGetKey(m_pWindow, GLFW_KEY_F3) == GLFW_PRESS;
+
+    if (bIsF3Pressed && !m_bWasF3Pressed)
+    {
+        ApplyCameraViewMode(ECameraViewMode::Right);
+    }
+
+    m_bWasF3Pressed = bIsF3Pressed;
+
+    const bool bIsF4Pressed = glfwGetKey(m_pWindow, GLFW_KEY_F4) == GLFW_PRESS;
+
+    if (bIsF4Pressed && !m_bWasF4Pressed)
+    {
+        ApplyCameraViewMode(ECameraViewMode::IsometricOrthographic);
+    }
+
+    m_bWasF4Pressed = bIsF4Pressed;
+
+    const bool bIsF5Pressed = glfwGetKey(m_pWindow, GLFW_KEY_F5) == GLFW_PRESS;
+
+    if (bIsF5Pressed && !m_bWasF5Pressed)
+    {
+        ApplyCameraViewMode(ECameraViewMode::Perspective);
+    }
+
+    m_bWasF5Pressed = bIsF5Pressed;
 
     const bool bIsPPressed = glfwGetKey(m_pWindow, GLFW_KEY_P) == GLFW_PRESS;
 
@@ -447,6 +503,8 @@ glm::dmat4 CApplication::CreateProjectionMatrix(
         ? m_pCamera->GetDistance()
         : m_dDefaultCameraDistance;
 
+    // ќртографическа€ проекци€ €вл€етс€ основным режимом дл€ CAD-like сетки.
+    // Perspective оставлен как дополнительный тестовый режим.
     if (m_bUseOrthographicProjection)
     {
         const double dSafeHalfHeight = std::clamp(
@@ -592,13 +650,47 @@ void CApplication::SetGridPreset(EGridPreset eNewPreset)
     m_eCurrentPreset = eNewPreset;
     m_sGridGeometry = CreateGridGeometry(m_eCurrentPreset);
 
-    // ѕри переключении режима переносим цель камеры в origin новой сетки.
-    if (m_pCamera != nullptr)
-    {
-        m_pCamera->SetTarget(m_sGridGeometry.vOrigin);
-    }
+    // ѕри смене preset сохран€ем текущий режим вида камеры.
+    //
+    // Ќапример:
+    // - если пользователь был в Top orthographic, новый preset откроетс€ в Top;
+    // - если пользователь был в Isometric orthographic, новый preset откроетс€ в Isometric;
+    // - если пользователь был в Perspective, новый preset откроетс€ в Perspective.
+    ApplyCameraViewMode(m_eCameraViewMode);
 
     std::cout << "Grid preset: " << GetGridPresetName(m_eCurrentPreset) << '\n';
+}
+
+void CApplication::ApplyCameraViewMode(ECameraViewMode eMode)
+{
+    if (m_pCamera == nullptr)
+    {
+        return;
+    }
+
+    const SCameraViewModeSettings sSettings =
+        GetCameraViewModeSettings(eMode);
+
+    m_eCameraViewMode = eMode;
+    m_bUseOrthographicProjection = sSettings.bUseOrthographicProjection;
+
+    m_dDefaultCameraYawRadians = sSettings.dYawRadians;
+    m_dDefaultCameraPitchRadians = sSettings.dPitchRadians;
+
+    m_pCamera->Reset(
+        m_sGridGeometry.vOrigin,
+        m_dDefaultCameraDistance,
+        m_dDefaultCameraYawRadians,
+        m_dDefaultCameraPitchRadians
+    );
+
+    std::cout << "Camera view: "
+        << GetCameraViewModeName(m_eCameraViewMode)
+        << '\n';
+
+    std::cout << "Projection: "
+        << (m_bUseOrthographicProjection ? "orthographic" : "perspective")
+        << '\n';
 }
 
 void CApplication::PrintControls() const
@@ -610,8 +702,13 @@ void CApplication::PrintControls() const
     std::cout << "  Shift + middle mouse button + move : orbit\n";
     std::cout << "  Left mouse button + move           : orbit fallback\n";
     std::cout << "  Mouse wheel                        : zoom to cursor\n";
-    std::cout << "  R                                  : reset camera\n";
-    std::cout << "  P                                  : toggle perspective/orthographic projection\n";
+    std::cout << "  R                                  : reset current camera view\n";
+    std::cout << "  P                                  : toggle orthographic/perspective projection\n";
+    std::cout << "  F1                                 : top orthographic view\n";
+    std::cout << "  F2                                 : front orthographic view\n";
+    std::cout << "  F3                                 : right orthographic view\n";
+    std::cout << "  F4                                 : isometric orthographic view\n";
+    std::cout << "  F5                                 : perspective view\n";
     std::cout << "  B                                  : toggle infinite/bounded grid\n";
     std::cout << "  M                                  : toggle lines/dots mode\n";
     std::cout << "  C                                  : toggle manual depth clamp\n";
@@ -627,6 +724,9 @@ void CApplication::PrintControls() const
 
 void CApplication::PrintInitialState() const
 {
+    std::cout << "Camera view: "
+        << GetCameraViewModeName(m_eCameraViewMode)
+        << '\n';
     std::cout << "Grid preset: " << GetGridPresetName(m_eCurrentPreset) << '\n';
     std::cout << "Projection: "
         << (m_bUseOrthographicProjection ? "orthographic" : "perspective")
@@ -698,11 +798,8 @@ void CApplication::MouseButtonCallback(
 
             if (bIsDoubleClick)
             {
-                pCamera->Reset(
-                    pApplication->m_sGridGeometry.vOrigin,
-                    pApplication->m_dDefaultCameraDistance,
-                    pApplication->m_dDefaultCameraYawRadians,
-                    pApplication->m_dDefaultCameraPitchRadians
+                pApplication->ApplyCameraViewMode(
+                    pApplication->m_eCameraViewMode
                 );
 
                 std::cout << "Camera reset by middle mouse double click\n";

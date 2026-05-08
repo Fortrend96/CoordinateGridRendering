@@ -16,12 +16,21 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release")
 # ------------------------------------------------------------------------------
 
 # GLFW.
+#
+# Ожидается, что GLFW лежит здесь:
+# external/glfw
 add_subdirectory(external/glfw)
 
 # GLAD.
+#
+# Ожидается, что GLAD лежит здесь:
+# external/glad
 add_subdirectory(external/glad)
 
 # GLM — header-only.
+#
+# Ожидается, что GLM лежит здесь:
+# external/glm
 set(GLM_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
 
 # ------------------------------------------------------------------------------
@@ -36,6 +45,9 @@ set(PROJECT_SOURCES
 
     src/GridPresets.h
     src/GridPresets.cpp
+
+    src/CameraViewMode.h
+    src/CameraViewMode.cpp
 
     src/ShaderProgram.h
     src/ShaderProgram.cpp
@@ -83,6 +95,7 @@ source_group("Source Files" FILES
     src/main.cpp
     src/Application.cpp
     src/GridPresets.cpp
+    src/CameraViewMode.cpp
     src/ShaderProgram.cpp
     src/GridRenderer.cpp
     src/OrbitCamera.cpp
@@ -92,6 +105,7 @@ source_group("Source Files" FILES
 source_group("Header Files" FILES
     src/Application.h
     src/GridPresets.h
+    src/CameraViewMode.h
     src/ShaderProgram.h
     src/GridRenderer.h
     src/OrbitCamera.h

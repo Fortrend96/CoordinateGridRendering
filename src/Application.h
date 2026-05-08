@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AxisMarkerRenderer.h"
+#include "CameraViewMode.h"
 #include "GridPresets.h"
 #include "GridRenderer.h"
 #include "OrbitCamera.h"
@@ -101,6 +102,12 @@ private:
     // Переключает preset сетки.
     void SetGridPreset(EGridPreset eNewPreset);
 
+    // Применяет выбранный режим камеры:
+    // - задаёт тип проекции;
+    // - задаёт yaw/pitch;
+    // - сбрасывает камеру на origin текущей сетки.
+    void ApplyCameraViewMode(ECameraViewMode eMode);
+
     // Печатает управление в консоль.
     void PrintControls() const;
 
@@ -154,6 +161,9 @@ private:
     // Текущий preset сетки.
     EGridPreset m_eCurrentPreset;
 
+    // Текущий режим вида камеры.
+    ECameraViewMode m_eCameraViewMode;
+
     // Камера.
     std::unique_ptr<COrbitCamera> m_pCamera;
 
@@ -186,4 +196,19 @@ private:
 
     // Состояние клавиши G на прошлом кадре.
     bool m_bWasGPressed;
+
+    // Состояние клавиши F1 на прошлом кадре.
+    bool m_bWasF1Pressed;
+
+    // Состояние клавиши F2 на прошлом кадре.
+    bool m_bWasF2Pressed;
+
+    // Состояние клавиши F3 на прошлом кадре.
+    bool m_bWasF3Pressed;
+
+    // Состояние клавиши F4 на прошлом кадре.
+    bool m_bWasF4Pressed;
+
+    // Состояние клавиши F5 на прошлом кадре.
+    bool m_bWasF5Pressed;
 };
