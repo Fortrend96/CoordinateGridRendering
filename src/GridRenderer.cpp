@@ -401,5 +401,9 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniformVec4f("uYAxisColorBottom", m_sStyle.vYAxisColorBottom);
 
     glBindVertexArray(m_nFullscreenVao);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    // Fullscreen quad рисуется двумя треугольниками.
+    // Вершины генерируются в vertex shader через gl_VertexID,
+    // поэтому VBO не нужен.
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 }

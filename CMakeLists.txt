@@ -16,21 +16,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release")
 # ------------------------------------------------------------------------------
 
 # GLFW.
-#
-# Ожидается, что GLFW лежит здесь:
-# external/glfw
 add_subdirectory(external/glfw)
 
 # GLAD.
-#
-# Ожидается, что GLAD лежит здесь:
-# external/glad
 add_subdirectory(external/glad)
 
 # GLM — header-only.
-#
-# Ожидается, что GLM лежит здесь:
-# external/glm
 set(GLM_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
 
 # ------------------------------------------------------------------------------
@@ -60,7 +51,7 @@ set(PROJECT_SOURCES
 )
 
 set(PROJECT_SHADERS
-    shaders/fullscreen_triangle.vert
+    shaders/fullscreen_quad.vert
     shaders/grid.frag
 
     shaders/axis_marker.vert
@@ -118,7 +109,7 @@ source_group("Shaders" FILES
 # Копируем shaders рядом с exe.
 #
 # Это нужно, потому что приложение грузит shader'ы по относительным путям:
-# shaders/fullscreen_triangle.vert
+# shaders/fullscreen_quad.vert
 # shaders/grid.frag
 # shaders/axis_marker.vert
 # shaders/axis_marker.frag

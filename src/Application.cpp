@@ -105,7 +105,7 @@ void CApplication::InitializeOpenGl()
 void CApplication::LoadShaders()
 {
     m_gridShaderProgram.LoadFromFiles(
-        "shaders/fullscreen_triangle.vert",
+        "shaders/fullscreen_quad.vert",
         "shaders/grid.frag"
     );
 
