@@ -16,10 +16,6 @@
 // - рисует несколько модельных объектов;
 // - позволяет проверить, как сетка взаимодействует с depth buffer;
 // - помогает увидеть, корректно ли сетка перекрывается объектами.
-//
-// Важно:
-// объекты рисуются относительно текущей геометрии сетки,
-// поэтому они остаются рядом с сеткой даже для rotated / large offset presets.
 class CDemoSceneRenderer
 {
 public:
@@ -29,10 +25,7 @@ public:
     // Освобождает ресурсы OpenGL.
     ~CDemoSceneRenderer();
 
-    // Копирование запрещено, потому что класс владеет OpenGL VAO/VBO/EBO.
     CDemoSceneRenderer(const CDemoSceneRenderer&) = delete;
-
-    // Копирующее присваивание запрещено, потому что класс владеет OpenGL VAO/VBO/EBO.
     CDemoSceneRenderer& operator=(const CDemoSceneRenderer&) = delete;
 
     // Инициализирует GPU-ресурсы и создаёт тестовую сцену.
@@ -42,10 +35,6 @@ public:
     void Destroy();
 
     // Рисует все объекты сцены.
-    //
-    // shaderProgram — шейдер для объектов.
-    // sFrameData — данные текущего кадра.
-    // sGridGeometry — текущая геометрия сетки.
     void Render(
         const CShaderProgram& shaderProgram,
         const SGridFrameData& sFrameData,

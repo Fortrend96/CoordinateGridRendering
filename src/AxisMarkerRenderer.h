@@ -9,10 +9,7 @@
 
 // ¬изуальные параметры маркера начала системы координат.
 //
-// ћаркер работает в двух режимах:
-// - perspective: рисуетс€ как маленька€ 3D-триада;
-// - orthographic: рисуетс€ как плоский UCS-маркер в стиле AutoCAD.
-//
+// ћаркер работает в  режимах 2D и 3D.
 // ¬се размеры задаютс€ в пиксел€х, чтобы маркер не мен€л визуальный размер
 // при приближении и отдалении камеры.
 struct SAxisMarkerStyle
@@ -45,8 +42,6 @@ struct SAxisMarkerStyle
 // Renderer маркера начала системы координат.
 //
 // ћаркер рисуетс€ отдельным проходом поверх сетки.
-// ќн использует простую line geometry, котора€ каждый кадр собираетс€
-// в CPU-коде и отправл€етс€ в dynamic VBO.
 class CAxisMarkerRenderer
 {
 public:
@@ -56,10 +51,8 @@ public:
     // ќсвобождает OpenGL-ресурсы renderer'а.
     ~CAxisMarkerRenderer();
 
-    //  опирование запрещено, потому что renderer владеет OpenGL VAO/VBO.
+    //  опирование и копирующее присваивание запрещено, потому что renderer владеет OpenGL VAO/VBO.
     CAxisMarkerRenderer(const CAxisMarkerRenderer&) = delete;
-
-    //  опирующее присваивание запрещено, потому что renderer владеет OpenGL VAO/VBO.
     CAxisMarkerRenderer& operator=(const CAxisMarkerRenderer&) = delete;
 
     // ѕеремещающий конструктор передаЄт владение OpenGL VAO/VBO.
@@ -81,11 +74,6 @@ public:
     const SAxisMarkerStyle& GetStyle() const;
 
     // –исует маркер начала системы координат.
-    //
-    // ¬ perspective-режиме рисуетс€ 3D-триада X/Y/Z.
-    // ¬ orthographic-режиме рисуетс€ плоский AutoCAD-like UCS icon:
-    // ось, направленна€ в камеру, скрываетс€, а оставшиес€ две оси
-    // рисуютс€ фиксированного экранного размера.
     void Render(
         const CShaderProgram& shaderProgram,
         const SGridFrameData& sFrameData,
@@ -94,9 +82,6 @@ public:
 
 private:
     // –исует perspective-вариант маркера.
-    //
-    // ¬ этом режиме показываютс€ все три оси X/Y/Z.
-    // Ѕуквы стро€тс€ billboard-способом, то есть всегда смотр€т на камеру.
     void RenderPerspectiveMarker(
         const CShaderProgram& shaderProgram,
         const SGridFrameData& sFrameData,
@@ -104,12 +89,6 @@ private:
     ) const;
 
     // –исует orthographic-вариант маркера.
-    //
-    // ¬ этом режиме ось, направленна€ в камеру, скрываетс€.
-    // Ќапример:
-    // - вид сверху: рисуютс€ X/Y, скрываетс€ Z;
-    // - вид спереди: рисуютс€ X/Z, скрываетс€ Y;
-    // - вид сбоку: рисуютс€ Y/Z, скрываетс€ X.
     void RenderOrthographicMarker(
         const CShaderProgram& shaderProgram,
         const SGridFrameData& sFrameData,

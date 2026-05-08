@@ -11,9 +11,6 @@ out vec4 vColor;
 void main()
 {
     // aLocalPosition хранится как смещение относительно origin сетки.
-    //
-    // Это полезно для больших координат:
-    // origin может быть 1_000_000+, а локальные оси/буквы маленькие.
     dvec3 worldPosition = uGridOrigin + aLocalPosition;
 
     dvec4 clipPosition = uViewProj * dvec4(worldPosition, 1.0);

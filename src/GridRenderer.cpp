@@ -6,11 +6,9 @@
 namespace
 {
     // Проецирует world-space точку в screen-space.
-    //
     // Возвращает:
     // - true, если точку удалось корректно спроецировать;
     // - false, если clip.w слишком близок к нулю.
-    //
     // Используется не для рендера, а для расчёта экранного масштаба сетки.
     bool ProjectWorldPointToScreen(
         const glm::dmat4& mViewProj,
@@ -80,18 +78,12 @@ namespace
         return glm::length(vScreenUnit - vScreenOrigin);
     }
 
-    // Округляет желаемый шаг вверх к красивому CAD-like значению.
-    //
+    // Округляет желаемый шаг вверх.
     // Используется шкала:
-    //
     // ..., 0.1, 0.2, 0.5,
     // 1, 2, 5,
     // 10, 20, 50,
     // 100, ...
-    //
-    // Почему вверх:
-    // если округлять вниз, линии могут стать слишком плотными,
-    // а это ухудшает читаемость и производительность.
     double RoundUpToNiceStep(double dDesiredStep)
     {
         if (!std::isfinite(dDesiredStep) || dDesiredStep <= 0.0)
@@ -138,30 +130,15 @@ CGridRenderer::CGridRenderer()
     m_sStyle.fAxisThickness = 1.6f;
 
     // Минимально допустимый угол взгляда к плоскости сетки.
-    //
-    // Чем больше это значение, тем раньше сетка будет скрываться
-    // при пологом взгляде.
-    //
-    // 0.005 — мягкое значение для CAD-like поведения:
     // сетка скрывается только при почти касательном взгляде.
     m_sStyle.dMinViewNormalDot = 0.005;
 
-    // По умолчанию включаем ручной clamp глубины.
-    // Это соответствует целевой логике: если фрагмент сетки выходит
-    // за near/far, он не отбрасывается, а прижимается к безопасной границе.
-    m_sStyle.bClampDepth = true;
-
     // Безопасный отступ от точных 0 и 1 в depth buffer.
-    // Значение можно будет подбирать, если на конкретной видеокарте
-    // останутся артефакты на границах.
     m_sStyle.dSafeDepthEpsilon = 0.000001;
 
     // Отладочная раскраска зон глубины по умолчанию выключена.
     m_sStyle.bDebugDepthZones = false;
 
-    // По умолчанию заливка плоскости выключена.
-    // Фон рисуется через glClearColor, а шейдер сетки выводит только линии.
-    m_sStyle.bDrawPlane = false;
 
     m_sStyle.bIsBounded = false;
     m_sStyle.vBounds = glm::dvec4(-25.0, -25.0, 25.0, 25.0);
@@ -187,14 +164,12 @@ CGridRenderer::CGridRenderer()
     //
     // Это только дефолтные тестовые значения демо.
     // В целевом варианте все цвета приходят снаружи и уходят в shader uniform'ами.
-    m_sStyle.vPlaneColorTop = glm::vec4(0.145f, 0.176f, 0.223f, 1.00f);
     m_sStyle.vMinorColorTop = glm::vec4(0.215f, 0.250f, 0.305f, 0.72f);
     m_sStyle.vMajorColorTop = glm::vec4(0.305f, 0.355f, 0.430f, 0.92f);
     m_sStyle.vXAxisColorTop = glm::vec4(0.860f, 0.170f, 0.180f, 1.00f);
     m_sStyle.vYAxisColorTop = glm::vec4(0.180f, 0.730f, 0.300f, 1.00f);
 
     // Нижняя сторона.
-    m_sStyle.vPlaneColorBottom = glm::vec4(0.125f, 0.152f, 0.192f, 1.00f);
     m_sStyle.vMinorColorBottom = glm::vec4(0.180f, 0.210f, 0.260f, 0.62f);
     m_sStyle.vMajorColorBottom = glm::vec4(0.255f, 0.300f, 0.370f, 0.82f);
     m_sStyle.vXAxisColorBottom = glm::vec4(0.620f, 0.120f, 0.130f, 0.95f);
@@ -295,11 +270,6 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
 
     double dPixelsPerWorldUnit = 0.0;
 
-    // Берём более консервативную оценку.
-    //
-    // При перспективе и наклонной сетке масштаб по X и Y может отличаться.
-    // min помогает избежать слишком плотной сетки в направлении,
-    // где линии ближе друг к другу на экране.
     if (dPixelsPerUnitX > 0.0 && dPixelsPerUnitY > 0.0)
     {
         dPixelsPerWorldUnit = std::min(dPixelsPerUnitX, dPixelsPerUnitY);
@@ -316,11 +286,6 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
     }
 
     // Переводим желаемое расстояние между линиями из пикселей в world units.
-    //
-    // Например:
-    // dTargetMinorStepPixels = 18 px,
-    // dPixelsPerWorldUnit = 9 px/unit,
-    // desiredStep = 18 / 9 = 2 world units.
     const double dDesiredMinorStep =
         m_sStyle.dTargetMinorStepPixels / dPixelsPerWorldUnit;
 
@@ -340,13 +305,9 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
     const double dMajorStepPixels = dMajorStep * dPixelsPerWorldUnit;
 
     // Не рисуем minor-сетку, если она становится слишком плотной на экране.
-    //
-    // Малые линии при расстоянии меньше ~10 px визуально начинают давать муар
-    // и мерцание. Лучше скрыть minor layer и оставить major layer.
     m_sStyle.bShowMinorGrid = dMinorStepPixels >= 14.0;
 
-    // Major-сетка может быть чуть плотнее, потому что она реже сама по себе
-    // и важна для ориентации пользователя.
+    // Major-сетка может быть чуть плотнее
     m_sStyle.bShowMajorGrid = dMajorStepPixels >= 8.0;
 
     // Оси X/Y оставляем видимыми всегда.
@@ -368,11 +329,8 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
 
     shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
 
-    shaderProgram.SetUniform1i("uClampDepth", m_sStyle.bClampDepth ? 1 : 0);
     shaderProgram.SetUniform1d("uSafeDepthEpsilon", m_sStyle.dSafeDepthEpsilon);
     shaderProgram.SetUniform1i("uDebugDepthZones", m_sStyle.bDebugDepthZones ? 1 : 0);
-
-    shaderProgram.SetUniform1i("uDrawPlane", m_sStyle.bDrawPlane ? 1 : 0);
 
     shaderProgram.SetUniform1i("uIsBounded", m_sStyle.bIsBounded ? 1 : 0);
     shaderProgram.SetUniformVec4d("uGridBounds", m_sStyle.vBounds);
@@ -392,13 +350,11 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     shaderProgram.SetUniform1f("uMajorThickness", m_sStyle.fMajorThickness);
     shaderProgram.SetUniform1f("uAxisThickness", m_sStyle.fAxisThickness);
 
-    shaderProgram.SetUniformVec4f("uPlaneColorTop", m_sStyle.vPlaneColorTop);
     shaderProgram.SetUniformVec4f("uMinorColorTop", m_sStyle.vMinorColorTop);
     shaderProgram.SetUniformVec4f("uMajorColorTop", m_sStyle.vMajorColorTop);
     shaderProgram.SetUniformVec4f("uXAxisColorTop", m_sStyle.vXAxisColorTop);
     shaderProgram.SetUniformVec4f("uYAxisColorTop", m_sStyle.vYAxisColorTop);
 
-    shaderProgram.SetUniformVec4f("uPlaneColorBottom", m_sStyle.vPlaneColorBottom);
     shaderProgram.SetUniformVec4f("uMinorColorBottom", m_sStyle.vMinorColorBottom);
     shaderProgram.SetUniformVec4f("uMajorColorBottom", m_sStyle.vMajorColorBottom);
     shaderProgram.SetUniformVec4f("uXAxisColorBottom", m_sStyle.vXAxisColorBottom);
@@ -407,7 +363,5 @@ void CGridRenderer::Render(const CShaderProgram& shaderProgram, const SGridFrame
     glBindVertexArray(m_nFullscreenVao);
 
     // Fullscreen quad рисуется двумя треугольниками.
-    // Вершины генерируются в vertex shader через gl_VertexID,
-    // поэтому VBO не нужен.
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }

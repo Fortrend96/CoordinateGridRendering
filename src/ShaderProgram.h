@@ -7,13 +7,11 @@
 #include <string>
 
 // Обёртка над OpenGL shader program.
-//
 // Класс отвечает за:
 // - загрузку shader source из файлов;
 // - компиляцию vertex/fragment shader;
 // - линковку program;
 // - установку uniform-параметров.
-//
 // Класс владеет OpenGL program id.
 class CShaderProgram
 {
@@ -24,16 +22,10 @@ public:
     // Удаляет OpenGL program, если он был создан.
     ~CShaderProgram();
 
-    // Копирование запрещено, потому что класс владеет OpenGL resource.
     CShaderProgram(const CShaderProgram&) = delete;
-
-    // Копирующее присваивание запрещено, потому что класс владеет OpenGL resource.
     CShaderProgram& operator=(const CShaderProgram&) = delete;
 
-    // Перемещающий конструктор.
     CShaderProgram(CShaderProgram&& other) noexcept;
-
-    // Перемещающее присваивание.
     CShaderProgram& operator=(CShaderProgram&& other) noexcept;
 
     // Загружает, компилирует и линкует shader program из файлов.

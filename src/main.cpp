@@ -15,4 +15,6 @@ int main()
         std::cerr << exception.what() << '\n';
         return 1;
     }
+
+    return 0;
 }

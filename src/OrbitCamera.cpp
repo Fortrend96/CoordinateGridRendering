@@ -143,8 +143,6 @@ void COrbitCamera::UpdateDrag(double dMouseX, double dMouseY)
 
     if (m_eDragMode == ECameraDragMode::Orbit)
     {
-        // CAD-like orbit: движение мыши по X вращает вокруг Z,
-        // движение по Y мен€ет pitch.
         const double dRotationSensitivity = 0.005;
 
         m_dYawRadians -= dDeltaX * dRotationSensitivity;
@@ -154,10 +152,6 @@ void COrbitCamera::UpdateDrag(double dMouseX, double dMouseY)
     }
     else if (m_eDragMode == ECameraDragMode::Pan)
     {
-        // Pan двигает target в плоскости экрана.
-        //
-        // ћасштаб зависит от рассто€ни€ до цели:
-        // чем дальше камера, тем больше мировое смещение на один пиксель.
         const double dPanSensitivity = 0.0015 * m_dDistance;
 
         const glm::dvec3 vRight = GetRightDirection();
@@ -176,8 +170,6 @@ void COrbitCamera::EndDrag()
 
 void COrbitCamera::AddZoom(double dScrollOffset)
 {
-    // ѕоложительный scroll приближает камеру,
-    // отрицательный Ч отдал€ет.
     const double dZoomFactor = std::pow(0.90, dScrollOffset);
 
     m_dDistance *= dZoomFactor;

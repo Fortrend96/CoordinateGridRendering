@@ -2,9 +2,8 @@
 
 #include "AxisMarkerRenderer.h"
 #include "DemoSceneRenderer.h"
-#include "GridPresets.h"
 #include "GridRenderer.h"
-#include "OrbitCamera.h"
+
 #include "ShaderProgram.h"
 
 #include <glad/glad.h>
@@ -14,8 +13,9 @@
 
 #include <memory>
 
-// Главный класс демо-приложения.
-//
+class COrbitCamera;
+
+// Главный класс приложения.
 // Отвечает за:
 // - создание окна;
 // - инициализацию OpenGL;
@@ -24,8 +24,6 @@
 // - обработку input;
 // - camera controls;
 // - render loop.
-//
-// main.cpp после рефакторинга только создаёт CApplication и вызывает Run().
 class CApplication
 {
 public:
@@ -35,17 +33,11 @@ public:
     // Освобождает ресурсы приложения.
     ~CApplication();
 
-    // Копирование запрещено, потому что приложение владеет GLFWwindow и OpenGL-ресурсами.
+    // Копирование и копирующее присваивание запрещено запрещено, потому что приложение владеет GLFWwindow и OpenGL-ресурсами.
     CApplication(const CApplication&) = delete;
-
-    // Копирующее присваивание запрещено, потому что приложение владеет GLFWwindow и OpenGL-ресурсами.
     CApplication& operator=(const CApplication&) = delete;
 
     // Запускает приложение.
-    //
-    // Возвращает:
-    // - 0 при нормальном завершении;
-    // - исключение при ошибке инициализации.
     int Run();
 
 private:
@@ -80,22 +72,20 @@ private:
     void Shutdown();
 
 private:
-    // Рассчитывает near/far planes для текущего положения камеры.
+    // Рассчитывает ближнюю/дальнюю плоскости для текущего положения камеры.
     void CalculateCameraClippingPlanes(
         double& dNearPlane,
         double& dFarPlane
     ) const;
 
-    // Создаёт ортографическую projection matrix.
-    //
-    // Перспективная проекция больше не используется.
+    // Создаёт ортографическую матрицу проекции.
     glm::dmat4 CreateProjectionMatrix(
         double dAspect,
         double dNearPlane,
         double dFarPlane
     ) const;
 
-    // Возвращает позицию курсора в OpenGL NDC.
+    // Возвращает позицию курсора в OpenGL NDC (нормализованные координаты устройства).
     glm::dvec2 GetCursorNdc() const;
 
     // Находит точку пересечения луча из курсора с текущей плоскостью сетки.
@@ -109,6 +99,9 @@ private:
 
     // Печатает текущее состояние демо.
     void PrintInitialState() const;
+
+    // Задаем геометрию по умолчанию
+    SGridGeometry CreateDefaultGridGeometry() const;
 
 private:
     // GLFW error callback.
@@ -157,11 +150,6 @@ private:
     // Текущая геометрия сетки.
     SGridGeometry m_sGridGeometry;
 
-    // Текущий preset сетки.
-    //
-    // Сейчас оставлен только Simple как дефолтный рабочий режим.
-    EGridPreset m_eCurrentPreset;
-
     // Камера.
     std::unique_ptr<COrbitCamera> m_pCamera;
 
@@ -169,57 +157,30 @@ private:
     double m_dDefaultCameraDistance;
 
     // Дефолтный yaw камеры.
-    //
-    // Подбирается так, чтобы при запуске:
-    // - X смотрела вправо;
-    // - Y смотрела вверх.
     double m_dDefaultCameraYawRadians;
 
     // Дефолтный pitch камеры для вида сверху.
-    //
-    // Используем почти вертикальный угол, чтобы не получить вырождение basis камеры.
     double m_dDefaultCameraPitchRadians;
 
     // Состояние клавиши B на прошлом кадре.
-    //
-    // Нужно, чтобы переключение происходило один раз на нажатие.
     bool m_bWasBPressed;
 
     // Состояние клавиши M на прошлом кадре.
-    //
-    // Нужно, чтобы переключение происходило один раз на нажатие.
     bool m_bWasMPressed;
 
     // Состояние клавиши G на прошлом кадре.
-    //
-    // Нужно, чтобы переключение depth debug происходило один раз на нажатие.
     bool m_bWasGPressed;
 
     // Отображать ли тестовые модельные объекты.
-    //
     // Эти объекты не являются частью сетки.
-    // Они нужны только для проверки того, как аналитическая сетка
-    // взаимодействует с обычной сценой через depth buffer.
     bool m_bShowDemoObjects;
 
     // Состояние клавиши O на прошлом кадре.
-    //
-    // Нужно, чтобы переключение происходило один раз на нажатие.
     bool m_bWasOPressed;
 
     // Рисовать ли сетку поверх всех объектов.
-    //
-    // false:
-    //   обычный режим. Сетка участвует в depth test и корректно
-    //   взаимодействует с объектами сцены.
-    //
-    // true:
-    //   x-ray режим. Сетка рисуется поверх фигур и визуально
-    //   проходит через них.
     bool m_bGridXrayMode;
 
     // Состояние клавиши X на прошлом кадре.
-    //
-    // Нужно, чтобы переключение x-ray режима происходило один раз на нажатие.
     bool m_bWasXPressed;
 };

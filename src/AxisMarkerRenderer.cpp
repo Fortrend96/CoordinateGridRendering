@@ -16,14 +16,6 @@ namespace
     };
 
     // Вершина маркера.
-    //
-    // Позиция хранится в локальных координатах относительно origin сетки.
-    // В shader'е world position получается как:
-    //
-    //     world = uGridOrigin + aLocalPosition
-    //
-    // Это важно для больших координат: origin может быть очень большим,
-    // а сам маркер остаётся маленьким локальным объектом.
     struct SAxisMarkerVertex
     {
         // Локальная позиция вершины относительно origin сетки.
@@ -46,10 +38,7 @@ namespace
     }
 
     // Добавляет квадрат в origin.
-    //
     // Квадрат строится в billboard-базисе камеры,
-    // поэтому в orthographic-режиме он выглядит как экранный квадрат,
-    // как в AutoCAD UCS icon.
     void AppendOriginSquare(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const glm::dvec3& vCenter,
@@ -78,9 +67,7 @@ namespace
     }
 
     // Добавляет букву X из двух линий.
-    //
     // Буква строится в billboard-базисе камеры:
-    // vBillboardRight/vBillboardUp задают экранную ориентацию символа.
     void AppendGlyphX(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const glm::dvec3& vCenter,
@@ -107,7 +94,6 @@ namespace
     }
 
     // Добавляет букву Y из трёх линий.
-    //
     // Буква строится в billboard-базисе камеры.
     void AppendGlyphY(
         std::vector<SAxisMarkerVertex>& arrVertices,
@@ -135,7 +121,6 @@ namespace
     }
 
     // Добавляет букву Z из трёх линий.
-    //
     // Буква строится в billboard-базисе камеры.
     void AppendGlyphZ(
         std::vector<SAxisMarkerVertex>& arrVertices,
@@ -212,12 +197,6 @@ namespace
     }
 
     // Проецирует локальную точку маркера в screen-space.
-    //
-    // Локальная точка переводится в world-space через:
-    //
-    //     world = gridOrigin + local
-    //
-    // Затем world-space точка проецируется в пиксели framebuffer'а.
     bool ProjectLocalPointToScreen(
         const glm::dmat4& mViewProj,
         const glm::dvec3& vGridOrigin,
@@ -292,12 +271,7 @@ namespace
         return dPixels / std::max(dPixelsPerWorldUnit, 1e-6);
     }
 
-    // Возвращает world-space right/up/viewDirection камеры из обратной view-матрицы.
-    //
-    // Для OpenGL-камеры:
-    // - local X камеры — right;
-    // - local Y камеры — up;
-    // - local -Z камеры — view direction.
+    // Возвращает world-space  камеры из обратной view-матрицы.
     void ExtractCameraBasis(
         const glm::dmat4& mView,
         glm::dvec3& vCameraRight,
@@ -337,10 +311,6 @@ namespace
     }
 
     // Возвращает экранную длину проекции оси маркера.
-    //
-    // Используется для определения:
-    // - какая ось почти направлена в камеру;
-    // - похож ли текущий orthographic view на один из классических CAD-видов.
     double GetAxisScreenLength(
         const SGridFrameData& sFrameData,
         const SGridGeometry& sGridGeometry,
@@ -381,15 +351,6 @@ namespace
 
     // Проверяет, похож ли текущий orthographic view на один из классических
     // осевых CAD-видов: Top/Bottom, Front/Back, Left/Right.
-    //
-    // Важно:
-    // orthographic projection сама по себе НЕ означает, что надо скрывать одну ось.
-    // Пользователь может вращать камеру в ортографической проекции.
-    // В таком случае нужно рисовать обычный 3D-маркер, иначе одна из осей будет
-    // внезапно исчезать при вращении камеры.
-    //
-    // Поэтому плоский AutoCAD-like UCS marker включаем только тогда,
-    // когда одна из осей почти направлена в камеру.
     bool IsPrincipalOrthographicView(
         const SGridFrameData& sFrameData,
         const SGridGeometry& sGridGeometry
@@ -430,12 +391,7 @@ namespace
 
         // Если одна из осей спроецировалась почти в точку,
         // значит камера смотрит почти вдоль этой оси.
-        //
-        // 0.08 означает: минимальная экранная длина оси меньше 8%
-        // от самой длинной экранной оси.
-        //
-        // Это достаточно строго, чтобы плоский UCS marker включался только
-        // в почти осевых видах, а не при произвольном вращении камеры.
+
         const double dPrincipalViewThreshold = 0.08;
 
         return (dMinLength / dMaxLength) < dPrincipalViewThreshold;
@@ -443,13 +399,6 @@ namespace
 
     // Определяет, какую ось скрыть в orthographic-режиме,
     // по экранной длине её проекции.
-    //
-    // Эта функция вызывается только для principal orthographic view.
-    //
-    // Логика:
-    // - проецируем X/Y/Z;
-    // - ось с минимальной экранной длиной почти направлена в камеру;
-    // - её скрываем.
     EAxisMarkerAxis ChooseHiddenAxisForOrthographicView(
         const SGridFrameData& sFrameData,
         const SGridGeometry& sGridGeometry
@@ -487,10 +436,6 @@ namespace
     }
 
     // Проецирует ось маркера в screen-space и возвращает экранное направление.
-    //
-    // Это нужно для orthographic-маркера:
-    // линия оси должна идти ровно в том направлении, в котором ось видна на экране,
-    // но длина линии должна быть фиксированной в пикселях.
     bool TryGetAxisScreenDirection(
         const SGridFrameData& sFrameData,
         const SGridGeometry& sGridGeometry,
@@ -535,10 +480,6 @@ namespace
     }
 
     // Строит одну экранно-стабильную ось для orthographic-маркера.
-    //
-    // Экранное направление берётся из проекции реальной оси,
-    // а затем переводится обратно в world-space через cameraRight/cameraUp.
-    // Благодаря этому длина оси остаётся фиксированной в пикселях.
     void AppendOrthographicAxis(
         std::vector<SAxisMarkerVertex>& arrVertices,
         const SGridFrameData& sFrameData,
@@ -582,9 +523,6 @@ namespace
         );
 
         // Переводим экранное направление в world-space направление.
-        //
-        // vScreenDirection.x идёт вдоль cameraRight,
-        // vScreenDirection.y идёт вдоль cameraUp.
         const glm::dvec3 vWorldScreenDirection = glm::normalize(
             vCameraRight * vScreenDirection.x +
             vCameraUp * vScreenDirection.y
@@ -620,7 +558,6 @@ CAxisMarkerRenderer::CAxisMarkerRenderer()
     , m_nVbo(0)
 {
     // Все размеры задаются в пикселях,
-    // чтобы маркер не менял визуальный размер при zoom.
     m_sStyle.dAxisLengthPixels = 48.0;
     m_sStyle.dLetterOffsetPixels = 10.0;
     m_sStyle.dLetterSizePixels = 6.0;
@@ -733,19 +670,6 @@ void CAxisMarkerRenderer::Render(
     const SGridGeometry& sGridGeometry
 ) const
 {
-    // Бесшовная логика projection modes.
-    //
-    // Perspective:
-    //   всегда рисуем 3D-маркер X/Y/Z.
-    //
-    // Orthographic:
-    //   если камера почти в одном из классических CAD-видов
-    //   Top/Bottom/Front/Back/Left/Right, рисуем плоский UCS marker
-    //   и скрываем ось, направленную в камеру.
-    //
-    //   если камера повернута произвольно, НЕ скрываем ось и рисуем обычный
-    //   3D-маркер. Иначе при вращении в orthographic projection одна из осей
-    //   будет внезапно пропадать.
     const bool bUseFlatOrthographicMarker =
         sFrameData.bIsOrthographicProjection &&
         IsPrincipalOrthographicView(
@@ -927,7 +851,6 @@ void CAxisMarkerRenderer::RenderOrthographicMarker(
 
     // В orthographic principal view скрываем ту ось,
     // которая почти не имеет экранной длины.
-    // Это соответствует AutoCAD-like UCS icon.
     const EAxisMarkerAxis eHiddenAxis = ChooseHiddenAxisForOrthographicView(
         sFrameData,
         sGridGeometry
@@ -961,7 +884,6 @@ void CAxisMarkerRenderer::RenderOrthographicMarker(
     std::vector<SAxisMarkerVertex> arrVertices;
 
     // Orthographic-режим: в origin рисуем маленький квадрат,
-    // как UCS icon в AutoCAD.
     AppendOriginSquare(
         arrVertices,
         glm::dvec3(0.0, 0.0, 0.0),

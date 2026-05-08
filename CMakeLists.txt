@@ -16,21 +16,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release")
 # ------------------------------------------------------------------------------
 
 # GLFW.
-#
-# Ожидается, что GLFW лежит здесь:
-# external/glfw
 add_subdirectory(external/glfw)
 
 # GLAD.
-#
-# Ожидается, что GLAD лежит здесь:
-# external/glad
 add_subdirectory(external/glad)
 
 # GLM — header-only.
-#
-# Ожидается, что GLM лежит здесь:
-# external/glm
 set(GLM_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
 
 # ------------------------------------------------------------------------------
@@ -42,9 +33,6 @@ set(PROJECT_SOURCES
 
     src/Application.h
     src/Application.cpp
-
-    src/GridPresets.h
-    src/GridPresets.cpp
 
     src/ShaderProgram.h
     src/ShaderProgram.cpp
@@ -97,7 +85,6 @@ target_link_libraries(${PROJECT_NAME}
 source_group("Source Files" FILES
     src/main.cpp
     src/Application.cpp
-    src/GridPresets.cpp
     src/ShaderProgram.cpp
     src/GridRenderer.cpp
     src/OrbitCamera.cpp
@@ -107,7 +94,6 @@ source_group("Source Files" FILES
 
 source_group("Header Files" FILES
     src/Application.h
-    src/GridPresets.h
     src/ShaderProgram.h
     src/GridRenderer.h
     src/OrbitCamera.h
@@ -131,22 +117,3 @@ add_custom_command(
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
     COMMENT "Copying shaders to output directory"
 )
-
-# ------------------------------------------------------------------------------
-# Compiler warnings
-# ------------------------------------------------------------------------------
-
-if (MSVC)
-    target_compile_options(${PROJECT_NAME}
-        PRIVATE
-            /W4
-            /permissive-
-    )
-else()
-    target_compile_options(${PROJECT_NAME}
-        PRIVATE
-            -Wall
-            -Wextra
-            -Wpedantic
-    )
-endif()

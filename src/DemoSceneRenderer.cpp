@@ -84,17 +84,8 @@ void CDemoSceneRenderer::Render(
 
     shaderProgram.Use();
 
-    // Для объектов используем double-матрицы.
-    //
-    // Это важно для preset'ов с большим смещением:
-    // если сразу перевести world-space матрицы в float,
-    // можно быстро потерять точность.
     shaderProgram.SetUniformMat4d("uViewProj", sFrameData.mViewProj);
 
-    // Направленный свет в world-space.
-    //
-    // Он нужен только для того, чтобы объекты выглядели объёмными,
-    // а не плоскими силуэтами.
     shaderProgram.SetUniformVec3f(
         "uLightDirectionWorld",
         glm::normalize(glm::vec3(0.35f, 0.55f, 0.75f))
@@ -112,13 +103,6 @@ void CDemoSceneRenderer::Render(
 
         const SMeshGpu& sMeshGpu = m_arrMeshes[sInstance.nMeshIndex];
 
-        // Итоговая модельная матрица:
-        //
-        // grid local object transform
-        //       ↓
-        // grid local space
-        //       ↓
-        // world space
         const glm::dmat4 mModelMatrix =
             mGridLocalToWorld * sInstance.mLocalModelMatrix;
 
@@ -237,16 +221,6 @@ glm::dmat4 CDemoSceneRenderer::BuildGridLocalToWorldMatrix(
 {
     glm::dmat4 mGridLocalToWorld(1.0);
 
-    // GLM хранит матрицы в column-major виде.
-    //
-    // Поэтому:
-    // m[0] — первая колонка,
-    // m[1] — вторая колонка,
-    // m[2] — третья колонка,
-    // m[3] — колонка переноса.
-    //
-    // Итог:
-    // world = origin + axisX * local.x + axisY * local.y + normal * local.z
     mGridLocalToWorld[0] = glm::dvec4(sGridGeometry.vAxisX, 0.0);
     mGridLocalToWorld[1] = glm::dvec4(sGridGeometry.vAxisY, 0.0);
     mGridLocalToWorld[2] = glm::dvec4(sGridGeometry.vNormal, 0.0);
@@ -564,33 +538,8 @@ void CDemoSceneRenderer::BuildSceneInstances()
     // 0 = cube
     // 1 = sphere
     // 2 = cylinder
-    //
-    // Важно:
-    // все объекты задаются в локальной системе координат сетки:
-    //
-    // local X = ось сетки X;
-    // local Y = ось сетки Y;
-    // local Z = нормаль сетки.
-    //
-    // Плоскость координатной сетки находится при local Z = 0.
-    //
-    // Поэтому, чтобы плоскость сетки проходила ровно через середину фигуры,
-    // центр фигуры нужно расположить на Z = 0.
-
-    // -------------------------------------------------------------------------
+    
     // Куб.
-    //
-    // Единичный куб изначально имеет размеры:
-    // X: [-0.5; 0.5]
-    // Y: [-0.5; 0.5]
-    // Z: [-0.5; 0.5]
-    //
-    // После scale(1.6, 1.6, 1.6):
-    // Z: [-0.8; 0.8]
-    //
-    // Центр куба находится в Z = 0,
-    // поэтому плоскость сетки проходит ровно через его середину.
-    // -------------------------------------------------------------------------
     {
         SDemoInstance sInstance{};
         sInstance.nMeshIndex = 0;
@@ -610,15 +559,7 @@ void CDemoSceneRenderer::BuildSceneInstances()
         m_arrInstances.push_back(sInstance);
     }
 
-    // -------------------------------------------------------------------------
     // Сфера.
-    //
-    // Единичная сфера изначально имеет радиус 1:
-    // Z: [-1.0; 1.0]
-    //
-    // Центр сферы находится в Z = 0,
-    // поэтому плоскость сетки проходит через её экватор.
-    // -------------------------------------------------------------------------
     {
         SDemoInstance sInstance{};
         sInstance.nMeshIndex = 1;
@@ -638,18 +579,7 @@ void CDemoSceneRenderer::BuildSceneInstances()
         m_arrInstances.push_back(sInstance);
     }
 
-    // -------------------------------------------------------------------------
     // Цилиндр.
-    //
-    // Единичный цилиндр изначально имеет высоту:
-    // Z: [-0.5; 0.5]
-    //
-    // После scale(0.9, 0.9, 2.0):
-    // Z: [-1.0; 1.0]
-    //
-    // Центр цилиндра находится в Z = 0,
-    // поэтому плоскость сетки проходит ровно через середину цилиндра.
-    // -------------------------------------------------------------------------
     {
         SDemoInstance sInstance{};
         sInstance.nMeshIndex = 2;
