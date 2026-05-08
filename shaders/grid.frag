@@ -204,7 +204,19 @@ void main()
     // t = -dot(rayOriginLocal, normal) / dot(rayDir, normal)
     double t = -dot(rayOriginLocal, uGridNormal) / denom;
 
-    if (t < 0.0)
+    // Важно:
+    // t < 0 означает, что точка пересечения с плоскостью сетки находится
+    // перед near plane относительно текущего луча.
+    //
+    // Раньше мы сразу делали discard, но это ломает ручной depth clamp:
+    // near-clamped область вообще не доходит до расчёта rawDepth
+    // и не может быть окрашена в debug-режиме.
+    //
+    // Поэтому:
+    // - если depth clamp выключен и debug выключен — можно discard'ить;
+    // - если depth clamp включён или включён debug зон — продолжаем расчёт,
+    //   потом rawDepth будет прижат к safeMinDepth.
+    if (!uClampDepth && !uDebugDepthZones && t < 0.0)
     {
         discard;
     }
