@@ -1,7 +1,6 @@
 #pragma once
 
 #include "AxisMarkerRenderer.h"
-#include "CameraViewMode.h"
 #include "DemoSceneRenderer.h"
 #include "GridPresets.h"
 #include "GridRenderer.h"
@@ -87,7 +86,9 @@ private:
         double& dFarPlane
     ) const;
 
-    // Создаёт projection matrix для текущего режима.
+    // Создаёт ортографическую projection matrix.
+    //
+    // Перспективная проекция больше не используется.
     glm::dmat4 CreateProjectionMatrix(
         double dAspect,
         double dNearPlane,
@@ -100,14 +101,8 @@ private:
     // Находит точку пересечения луча из курсора с текущей плоскостью сетки.
     bool TryGetCursorGridPoint(glm::dvec3& vResult) const;
 
-    // Переключает preset сетки.
-    void SetGridPreset(EGridPreset eNewPreset);
-
-    // Применяет выбранный режим камеры:
-    // - задаёт тип проекции;
-    // - задаёт yaw/pitch;
-    // - сбрасывает камеру на origin текущей сетки.
-    void ApplyCameraViewMode(ECameraViewMode eMode);
+    // Сбрасывает камеру в дефолтный ортографический вид сверху.
+    void ResetCameraToDefaultView();
 
     // Печатает управление в консоль.
     void PrintControls() const;
@@ -163,42 +158,41 @@ private:
     SGridGeometry m_sGridGeometry;
 
     // Текущий preset сетки.
+    //
+    // Сейчас оставлен только Simple как дефолтный рабочий режим.
     EGridPreset m_eCurrentPreset;
-
-    // Текущий режим вида камеры.
-    ECameraViewMode m_eCameraViewMode;
 
     // Камера.
     std::unique_ptr<COrbitCamera> m_pCamera;
-
-    // Использовать ли ортографическую проекцию.
-    bool m_bUseOrthographicProjection;
 
     // Дефолтное расстояние камеры.
     double m_dDefaultCameraDistance;
 
     // Дефолтный yaw камеры.
+    //
+    // Подбирается так, чтобы при запуске:
+    // - X смотрела вправо;
+    // - Y смотрела вверх.
     double m_dDefaultCameraYawRadians;
 
-    // Дефолтный pitch камеры.
+    // Дефолтный pitch камеры для вида сверху.
+    //
+    // Используем почти вертикальный угол, чтобы не получить вырождение basis камеры.
     double m_dDefaultCameraPitchRadians;
 
-    // Состояние клавиши P на прошлом кадре.
-    bool m_bWasPPressed;
-
     // Состояние клавиши B на прошлом кадре.
+    //
+    // Нужно, чтобы переключение происходило один раз на нажатие.
     bool m_bWasBPressed;
 
     // Состояние клавиши M на прошлом кадре.
+    //
+    // Нужно, чтобы переключение происходило один раз на нажатие.
     bool m_bWasMPressed;
 
-    // Состояние клавиши C на прошлом кадре.
-    bool m_bWasCPressed;
-
-    // Состояние клавиши F на прошлом кадре.
-    bool m_bWasFPressed;
-
     // Состояние клавиши G на прошлом кадре.
+    //
+    // Нужно, чтобы переключение depth debug происходило один раз на нажатие.
     bool m_bWasGPressed;
 
     // Отображать ли тестовые модельные объекты.
@@ -210,8 +204,7 @@ private:
 
     // Состояние клавиши O на прошлом кадре.
     //
-    // Нужно, чтобы переключение происходило один раз на нажатие,
-    // а не каждый кадр, пока клавиша удерживается.
+    // Нужно, чтобы переключение происходило один раз на нажатие.
     bool m_bWasOPressed;
 
     // Рисовать ли сетку поверх всех объектов.
@@ -227,22 +220,6 @@ private:
 
     // Состояние клавиши X на прошлом кадре.
     //
-    // Нужно, чтобы переключение x-ray режима происходило один раз
-    // на нажатие, а не каждый кадр, пока клавиша удерживается.
+    // Нужно, чтобы переключение x-ray режима происходило один раз на нажатие.
     bool m_bWasXPressed;
-
-    // Состояние клавиши F1 на прошлом кадре.
-    bool m_bWasF1Pressed;
-
-    // Состояние клавиши F2 на прошлом кадре.
-    bool m_bWasF2Pressed;
-
-    // Состояние клавиши F3 на прошлом кадре.
-    bool m_bWasF3Pressed;
-
-    // Состояние клавиши F4 на прошлом кадре.
-    bool m_bWasF4Pressed;
-
-    // Состояние клавиши F5 на прошлом кадре.
-    bool m_bWasF5Pressed;
 };
