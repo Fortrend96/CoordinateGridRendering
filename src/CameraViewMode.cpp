@@ -26,7 +26,7 @@ SCameraViewModeSettings GetCameraViewModeSettings(ECameraViewMode eMode)
         return SCameraViewModeSettings
         {
             true,
-            glm::radians(0.0),
+            glm::radians(-90.0),
             glm::radians(dAlmostVerticalPitchDegrees)
         };
 
