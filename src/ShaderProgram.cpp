@@ -2,11 +2,11 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
-#include <utility>
 #include <vector>
 
 CShaderProgram::CShaderProgram()
@@ -134,6 +134,25 @@ void CShaderProgram::SetUniform1d(const std::string& strName, double dValue) con
     glUniform1d(nLocation, dValue);
 }
 
+void CShaderProgram::SetUniformVec3f(
+    const std::string& strName,
+    const glm::vec3& vValue
+) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniform3fv(
+        nLocation,
+        1,
+        glm::value_ptr(vValue)
+    );
+}
+
 void CShaderProgram::SetUniformVec4f(
     const std::string& strName,
     const glm::vec4& vValue
@@ -210,6 +229,26 @@ void CShaderProgram::SetUniformVec4d(
         vValue.y,
         vValue.z,
         vValue.w
+    );
+}
+
+void CShaderProgram::SetUniformMat4f(
+    const std::string& strName,
+    const glm::mat4& mValue
+) const
+{
+    const GLint nLocation = GetUniformLocation(strName);
+
+    if (nLocation < 0)
+    {
+        return;
+    }
+
+    glUniformMatrix4fv(
+        nLocation,
+        1,
+        GL_FALSE,
+        glm::value_ptr(mValue)
     );
 }
 

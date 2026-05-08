@@ -60,6 +60,9 @@ public:
     // Устанавливает double uniform.
     void SetUniform1d(const std::string& strName, double dValue) const;
 
+    // Устанавливает vec3 uniform.
+    void SetUniformVec3f(const std::string& strName, const glm::vec3& vValue) const;
+
     // Устанавливает vec4 uniform.
     void SetUniformVec4f(const std::string& strName, const glm::vec4& vValue) const;
 
@@ -71,6 +74,9 @@ public:
 
     // Устанавливает dvec4 uniform.
     void SetUniformVec4d(const std::string& strName, const glm::dvec4& vValue) const;
+
+    // Устанавливает mat4 uniform.
+    void SetUniformMat4f(const std::string& strName, const glm::mat4& mValue) const;
 
     // Устанавливает dmat4 uniform.
     void SetUniformMat4d(const std::string& strName, const glm::dmat4& mValue) const;

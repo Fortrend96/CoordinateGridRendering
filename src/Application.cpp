@@ -66,7 +66,6 @@ void CApplication::InitializeGlfw()
         throw std::runtime_error("Failed to initialize GLFW");
     }
 
-    // Просим OpenGL 4.3 Core Profile.
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -88,14 +87,11 @@ void CApplication::CreateWindow()
     }
 
     glfwMakeContextCurrent(m_pWindow);
-
-    // Вертикальная синхронизация.
     glfwSwapInterval(1);
 }
 
 void CApplication::InitializeOpenGl()
 {
-    // GLAD нужно инициализировать только после создания OpenGL-контекста.
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
     {
         throw std::runtime_error("Failed to initialize GLAD");
@@ -105,11 +101,9 @@ void CApplication::InitializeOpenGl()
     std::cout << "OpenGL renderer: " << glGetString(GL_RENDERER) << '\n';
     std::cout << "Current path: " << std::filesystem::current_path() << '\n';
 
-    // Сетка пишет gl_FragDepth, поэтому включаем depth test.
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
-    // Включаем alpha blending для полупрозрачной сетки и debug-режимов.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
@@ -125,6 +119,11 @@ void CApplication::LoadShaders()
         "shaders/axis_marker.vert",
         "shaders/axis_marker.frag"
     );
+
+    m_sceneObjectShaderProgram.LoadFromFiles(
+        "shaders/object.vert",
+        "shaders/object.frag"
+    );
 }
 
 void CApplication::InitializeScene()
@@ -133,22 +132,14 @@ void CApplication::InitializeScene()
 
     m_gridRenderer.Initialize();
     m_axisMarkerRenderer.Initialize();
+    m_demoSceneRenderer.Initialize();
 
     m_sGridStyle = m_gridRenderer.GetStyle();
     m_gridRenderer.SetStyle(m_sGridStyle);
 
-    // Для стартового вида как в AutoCAD используем обычную XY-сетку,
-    // без большого смещения и без тестового поворота.
     m_eCurrentPreset = EGridPreset::Simple;
     m_sGridGeometry = CreateGridGeometry(m_eCurrentPreset);
 
-    // Камеру создаём с начальными параметрами.
-    //
-    // После создания сразу применяем явный режим вида камеры через
-    // ApplyCameraViewMode(...), чтобы не смешивать:
-    // - тип проекции;
-    // - ориентацию камеры;
-    // - тестовые presets сетки.
     m_pCamera = std::make_unique<COrbitCamera>(
         m_sGridGeometry.vOrigin,
         m_dDefaultCameraDistance,
@@ -353,15 +344,37 @@ void CApplication::RenderFrame()
 
     glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
 
-    // CAD-like тёмный фон.
+    // -------------------------------------------------------------------------
+    // 1. Очищаем framebuffer.
+    //
+    // Цвет фона выбран в CAD-like тёмной гамме.
+    //
+    // Важно:
+    // depth buffer тоже обязательно очищаем, потому что в текущем кадре
+    // модельные объекты должны заново записать свою глубину.
+    // -------------------------------------------------------------------------
     glClearColor(0.145f, 0.176f, 0.223f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    if (m_pCamera == nullptr)
+    {
+        return;
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Формируем матрицы текущего кадра.
+    //
+    // View matrix берётся из OrbitCamera.
+    // Projection matrix зависит от текущего режима:
+    // - orthographic;
+    // - perspective.
+    // -------------------------------------------------------------------------
     const glm::dmat4 mView = m_pCamera->GetViewMatrix();
 
     const double dAspect =
         nFramebufferHeight > 0
-        ? static_cast<double>(nFramebufferWidth) / static_cast<double>(nFramebufferHeight)
+        ? static_cast<double>(nFramebufferWidth) /
+        static_cast<double>(nFramebufferHeight)
         : 1.0;
 
     double dNearPlane = 0.1;
@@ -382,68 +395,120 @@ void CApplication::RenderFrame()
     //
     // clip = projection * view * worldPosition
     const glm::dmat4 mViewProj = mProjection * mView;
+
+    // Обратная view-projection нужна сетке:
+    // fragment shader восстанавливает луч текущего пикселя через gl_FragCoord.
     const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
 
+    // -------------------------------------------------------------------------
+    // 3. Заполняем общие данные кадра.
+    //
+    // Эти данные используются:
+    // - рендерером сетки;
+    // - рендерером маркера;
+    // - рендерером тестовых объектов.
+    // -------------------------------------------------------------------------
     SGridFrameData sFrameData;
 
-    // View-матрица нужна маркеру осей,
-    // чтобы получить cameraRight/cameraUp/cameraViewDirection.
     sFrameData.mView = mView;
-
-    // View-projection нужна сетке и маркеру
-    // для проекции точек и расчёта экранных размеров.
     sFrameData.mViewProj = mViewProj;
-
-    // Обратная view-projection нужна fullscreen vertex shader'у сетки,
-    // чтобы восстановить near/far точки луча.
     sFrameData.mInvViewProj = mInvViewProj;
 
-    // Размер framebuffer нужен для пересчёта world units в pixels.
     sFrameData.vViewportSize = glm::dvec2(
         static_cast<double>(nFramebufferWidth),
         static_cast<double>(nFramebufferHeight)
     );
 
-    // Флаг нужен AxisMarkerRenderer.
-    // Маркер остаётся отдельной сущностью демо-приложения.
     sFrameData.bIsOrthographicProjection = m_bUseOrthographicProjection;
 
-    // Обновляем геометрию сетки перед рендером.
+    // -------------------------------------------------------------------------
+    // 4. Рисуем модельные объекты тестовой сцены.
     //
-    // Это нужно делать каждый кадр, потому что тестовые presets могут менять:
-    // - origin;
-    // - ориентацию осей;
-    // - normal.
-    m_gridRenderer.SetGeometry(m_sGridGeometry);
-
-    // Обновляем adaptive step.
+    // Это именно тестовые объекты для проверки взаимодействия сетки со сценой.
     //
-    // Сетка подбирает шаг вида 1/2/5 * 10^n по текущему экранному масштабу.
-    m_gridRenderer.UpdateAdaptiveStep(sFrameData);
-
-    // Сетка должна участвовать в Z-test,
-    // но не должна записывать свою глубину в depth buffer.
+    // Объекты должны:
+    // - проходить depth test;
+    // - писать глубину в depth buffer;
+    // - рисоваться без blending, потому что они непрозрачные.
     //
-    // Это нужно, чтобы:
-    // - модельные объекты могли закрывать сетку;
-    // - сетка не портила depth buffer для последующих проходов.
-    glDepthMask(GL_FALSE);
-
-    m_gridRenderer.Render(m_gridShaderProgram, sFrameData);
+    // После этого сетка будет рисоваться поверх той же сцены,
+    // но с включённым Z-test и отключённой записью глубины.
+    // -------------------------------------------------------------------------
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
 
     glDepthMask(GL_TRUE);
 
-    // Маркер начала координат пока оставляем как отдельную вспомогательную
-    // сущность демо-приложения. Он не является частью логики сетки.
+    glDisable(GL_BLEND);
+
+    m_demoSceneRenderer.Render(
+        m_sceneObjectShaderProgram,
+        sFrameData,
+        m_sGridGeometry
+    );
+
+    // -------------------------------------------------------------------------
+    // 5. Рисуем аналитическую сетку.
+    //
+    // Сетка должна:
+    // - использовать тот же view/projection;
+    // - участвовать в depth test;
+    // - НЕ писать глубину в depth buffer;
+    // - использовать blending, потому что линии полупрозрачные.
+    //
+    // Такое поведение нужно для CAD-like результата:
+    // - модельные объекты могут перекрывать сетку;
+    // - сетка не портит depth buffer для последующих проходов;
+    // - gl_FragDepth сетки проверяется относительно уже нарисованной сцены.
+    // -------------------------------------------------------------------------
+    m_gridRenderer.SetGeometry(m_sGridGeometry);
+
+    // Adaptive step пересчитывается каждый кадр, потому что масштаб сетки
+    // зависит от текущей камеры, projection matrix и viewport size.
+    m_gridRenderer.UpdateAdaptiveStep(sFrameData);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glDepthMask(GL_FALSE);
+
+    m_gridRenderer.Render(
+        m_gridShaderProgram,
+        sFrameData
+    );
+
+    glDepthMask(GL_TRUE);
+
+    // -------------------------------------------------------------------------
+    // 6. Рисуем маркер начала координат.
+    //
+    // Маркер пока оставляем как отдельную вспомогательную сущность демо.
+    // Он не является частью логики сетки.
+    //
+    // Сейчас он рисуется после сетки, чтобы оставаться читаемым.
+    // -------------------------------------------------------------------------
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     m_axisMarkerRenderer.Render(
         m_axisMarkerShaderProgram,
         sFrameData,
         m_sGridGeometry
     );
+
+    // -------------------------------------------------------------------------
+    // 7. Возвращаем безопасные OpenGL-состояния.
+    //
+    // Это полезно, чтобы следующий кадр начинался из ожидаемого состояния.
+    // -------------------------------------------------------------------------
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
 }
 
 void CApplication::Shutdown()
 {
+    m_demoSceneRenderer.Destroy();
     m_axisMarkerRenderer.Destroy();
     m_gridRenderer.Destroy();
 
@@ -465,25 +530,17 @@ void CApplication::CalculateCameraClippingPlanes(
         ? m_pCamera->GetDistance()
         : m_dDefaultCameraDistance;
 
-    // Near plane уменьшается при приближении.
-    //
-    // Это защищает от ситуации, когда часть сетки находится между камерой
-    // и near plane. В таком случае фрагменты получают depth < 0.
     dNearPlane = std::clamp(
         dCameraDistance * 0.0005,
         0.00001,
         0.1
     );
 
-    // Far plane увеличивается при отдалении.
-    //
-    // Это защищает от ситуации, когда дальняя часть сетки выходит за far plane.
     dFarPlane = std::max(
         1000.0,
         dCameraDistance * 50.0
     );
 
-    // Минимальный зазор между near и far.
     if (dFarPlane < dNearPlane * 1000.0)
     {
         dFarPlane = dNearPlane * 1000.0;
@@ -496,15 +553,11 @@ glm::dmat4 CApplication::CreateProjectionMatrix(
     double dFarPlane
 ) const
 {
-    // В orthographic расстояние камеры само по себе не меняет масштаб.
-    // Поэтому используем distance камеры как размер половины видимой области.
     const double dOrthographicHalfHeight =
         m_pCamera != nullptr
         ? m_pCamera->GetDistance()
         : m_dDefaultCameraDistance;
 
-    // Ортографическая проекция является основным режимом для CAD-like сетки.
-    // Perspective оставлен как дополнительный тестовый режим.
     if (m_bUseOrthographicProjection)
     {
         const double dSafeHalfHeight = std::clamp(
@@ -601,9 +654,6 @@ bool CApplication::TryGetCursorGridPoint(glm::dvec3& vResult) const
 
     const glm::dvec2 vNdc = GetCursorNdc();
 
-    // OpenGL NDC:
-    // near plane = -1
-    // far plane  =  1
     const glm::dvec4 vNearClip(vNdc.x, vNdc.y, -1.0, 1.0);
     const glm::dvec4 vFarClip(vNdc.x, vNdc.y, 1.0, 1.0);
 
@@ -618,7 +668,8 @@ bool CApplication::TryGetCursorGridPoint(glm::dvec3& vResult) const
         glm::dvec3(vFarWorld - vNearWorld)
     );
 
-    const double dDenom = glm::dot(vRayDirection, m_sGridGeometry.vNormal);
+    const double dDenom =
+        glm::dot(vRayDirection, m_sGridGeometry.vNormal);
 
     if (std::abs(dDenom) < 1e-12)
     {
@@ -650,12 +701,6 @@ void CApplication::SetGridPreset(EGridPreset eNewPreset)
     m_eCurrentPreset = eNewPreset;
     m_sGridGeometry = CreateGridGeometry(m_eCurrentPreset);
 
-    // При смене preset сохраняем текущий режим вида камеры.
-    //
-    // Например:
-    // - если пользователь был в Top orthographic, новый preset откроется в Top;
-    // - если пользователь был в Isometric orthographic, новый preset откроется в Isometric;
-    // - если пользователь был в Perspective, новый preset откроется в Perspective.
     ApplyCameraViewMode(m_eCameraViewMode);
 
     std::cout << "Grid preset: " << GetGridPresetName(m_eCurrentPreset) << '\n';
@@ -784,7 +829,6 @@ void CApplication::MouseButtonCallback(
     {
         if (nAction == GLFW_PRESS)
         {
-            // Детектор двойного клика средней кнопкой.
             static double s_dLastMiddleClickTime = -1.0;
 
             const double dCurrentTime = glfwGetTime();
@@ -812,12 +856,10 @@ void CApplication::MouseButtonCallback(
 
             if (bShiftPressed)
             {
-                // AutoCAD-like: Shift + middle mouse drag -> orbit.
                 pCamera->BeginOrbit(dMouseX, dMouseY);
             }
             else
             {
-                // AutoCAD-like: middle mouse drag -> pan.
                 pCamera->BeginPan(dMouseX, dMouseY);
             }
         }
@@ -827,8 +869,6 @@ void CApplication::MouseButtonCallback(
         }
     }
 
-    // Дополнительный fallback:
-    // ЛКМ + движение мыши тоже вращает камеру.
     if (nButton == GLFW_MOUSE_BUTTON_LEFT)
     {
         if (nAction == GLFW_PRESS)
@@ -888,7 +928,6 @@ void CApplication::ScrollCallback(
     const bool bHasPointBeforeZoom =
         pApplication->TryGetCursorGridPoint(vGridPointBeforeZoom);
 
-    // Сначала меняем расстояние камеры.
     pCamera->AddZoom(dOffsetY);
 
     if (!bHasPointBeforeZoom)
@@ -906,8 +945,6 @@ void CApplication::ScrollCallback(
         return;
     }
 
-    // Сдвигаем target так, чтобы точка, которая была под курсором до zoom,
-    // осталась под курсором после zoom.
     const glm::dvec3 vTargetCorrection =
         vGridPointBeforeZoom - vGridPointAfterZoom;
 

@@ -60,6 +60,9 @@ set(PROJECT_SOURCES
 
     src/AxisMarkerRenderer.h
     src/AxisMarkerRenderer.cpp
+
+    src/DemoSceneRenderer.h
+    src/DemoSceneRenderer.cpp
 )
 
 set(PROJECT_SHADERS
@@ -68,6 +71,9 @@ set(PROJECT_SHADERS
 
     shaders/axis_marker.vert
     shaders/axis_marker.frag
+
+    shaders/object.vert
+    shaders/object.frag
 )
 
 add_executable(${PROJECT_NAME}
@@ -100,6 +106,7 @@ source_group("Source Files" FILES
     src/GridRenderer.cpp
     src/OrbitCamera.cpp
     src/AxisMarkerRenderer.cpp
+    src/DemoSceneRenderer.cpp
 )
 
 source_group("Header Files" FILES
@@ -110,6 +117,7 @@ source_group("Header Files" FILES
     src/GridRenderer.h
     src/OrbitCamera.h
     src/AxisMarkerRenderer.h
+    src/DemoSceneRenderer.h
 )
 
 source_group("Shaders" FILES
@@ -120,13 +128,6 @@ source_group("Shaders" FILES
 # Shader copy
 # ------------------------------------------------------------------------------
 
-# Копируем shaders рядом с exe.
-#
-# Это нужно, потому что приложение грузит shader'ы по относительным путям:
-# shaders/fullscreen_quad.vert
-# shaders/grid.frag
-# shaders/axis_marker.vert
-# shaders/axis_marker.frag
 add_custom_command(
     TARGET ${PROJECT_NAME}
     POST_BUILD

@@ -2,6 +2,7 @@
 
 #include "AxisMarkerRenderer.h"
 #include "CameraViewMode.h"
+#include "DemoSceneRenderer.h"
 #include "GridPresets.h"
 #include "GridRenderer.h"
 #include "OrbitCamera.h"
@@ -141,16 +142,19 @@ private:
     CShaderProgram m_gridShaderProgram;
 
     // Shader program для маркера начала координат.
-    //
-    // Маркер оставляем как отдельную вспомогательную сущность демо,
-    // не как часть логики сетки.
     CShaderProgram m_axisMarkerShaderProgram;
+
+    // Shader program для модельных объектов тестовой сцены.
+    CShaderProgram m_sceneObjectShaderProgram;
 
     // Renderer аналитической сетки.
     CGridRenderer m_gridRenderer;
 
     // Renderer маркера начала координат.
     CAxisMarkerRenderer m_axisMarkerRenderer;
+
+    // Renderer тестовых модельных объектов.
+    CDemoSceneRenderer m_demoSceneRenderer;
 
     // Текущий стиль сетки.
     SGridStyle m_sGridStyle;
