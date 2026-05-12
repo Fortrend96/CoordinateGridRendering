@@ -6,197 +6,166 @@
 
 #include <glm/glm.hpp>
 
-// Геометрические параметры координатной сетки.
+// Геометрия координатной сетки в world-space.
+//
+// Сетка задаётся не готовой геометрией линий, а плоскостью:
+// origin + axisX * x + axisY * y.
 struct SGridGeometry
 {
-    // Начало координат сетки в world-space.
+    // Начало координат сетки.
     glm::dvec3 vOrigin;
 
-    // Направление локальной оси X сетки в world-space.
+    // Локальная ось X сетки в world-space.
     glm::dvec3 vAxisX;
 
-    // Направление локальной оси Y сетки в world-space.
+    // Локальная ось Y сетки в world-space.
     glm::dvec3 vAxisY;
 
-    // Нормаль к плоскости сетки в world-space.
+    // Нормаль плоскости сетки.
     glm::dvec3 vNormal;
 };
 
-// Визуальные и логические параметры сетки.
-// Эта структура описывает не только цвета и толщины,
-// но и runtime-режимы отображения:
-struct SGridStyle
-{
-    // Текущий малый шаг сетки в локальных единицах сетки.
-    // При включённом adaptive step значение пересчитывается каждый кадр.
-    double dMinorStep;
-
-    // Текущий большой шаг сетки в локальных единицах сетки.
-    // Обычно равен dMinorStep * nMajorLineFrequency.
-    double dMajorStep;
-
-    // Толщина малых линий сетки в условных экранных единицах.
-    float fMinorThickness;
-
-    // Толщина больших линий сетки в условных экранных единицах.
-    float fMajorThickness;
-
-    // Толщина осей X/Y в условных экранных единицах.
-    float fAxisThickness;
-
-    // Минимально допустимый abs(dot(rayDirection, gridNormal)).
-    // Если значение меньше, значит камера смотрит почти вдоль плоскости сетки. В таком случае шейдер её скрывает.
-    double dMinViewNormalDot;
-
-    // Безопасный отступ от 0 и 1 в depth buffer.
-    double dSafeDepthEpsilon;
-
-    // Отладочный режим раскраски зон глубины.
-    bool bDebugDepthZones;
-
-    // Ограничивать ли сетку прямоугольником в её локальной системе координат.
-    bool bIsBounded;
-
-    // Границы ограниченной сетки в локальной системе координат:
-    // x = minX,
-    // y = minY,
-    // z = maxX,
-    // w = maxY.
-    glm::dvec4 vBounds;
-
-    // Режим отображения узлов сетки.
-    bool bDrawDots;
-
-    // Радиус точки в режиме отображения dots.
-    float fDotRadius;
-
-    // Использовать ли автоматический выбор шага сетки при изменении zoom.
-    bool bUseAdaptiveStep;
-
-    // Желаемое расстояние между малыми линиями сетки в пикселях.
-    // На основе этого значения renderer выбирает красивый шаг 1/2/5 * 10^n.
-    double dTargetMinorStepPixels;
-
-    // Количество малых шагов в одном большом шаге.
-    int nMajorLineFrequency;
-
-    // Показывать ли малую сетку.
-    bool bShowMinorGrid;
-
-    // Показывать ли большую сетку.
-    bool bShowMajorGrid;
-
-    // Показывать ли оси X/Y.
-    bool bShowAxes;
-
-    // Цвет малых линий при взгляде на верхнюю сторону сетки.
-    glm::vec4 vMinorColorTop;
-
-    // Цвет больших линий при взгляде на верхнюю сторону сетки.
-    glm::vec4 vMajorColorTop;
-
-    // Цвет оси X при взгляде на верхнюю сторону сетки.
-    glm::vec4 vXAxisColorTop;
-
-    // Цвет оси Y при взгляде на верхнюю сторону сетки.
-    glm::vec4 vYAxisColorTop;
-
-    // Цвет малых линий при взгляде на нижнюю сторону сетки.
-    glm::vec4 vMinorColorBottom;
-
-    // Цвет больших линий при взгляде на нижнюю сторону сетки.
-    glm::vec4 vMajorColorBottom;
-
-    // Цвет оси X при взгляде на нижнюю сторону сетки.
-    glm::vec4 vXAxisColorBottom;
-
-    // Цвет оси Y при взгляде на нижнюю сторону сетки.
-    glm::vec4 vYAxisColorBottom;
-};
-
-// Данные текущего кадра, которые нужны сетке и вспомогательным renderer'ам.
+// Данные текущего кадра, необходимые для отрисовки сетки.
 struct SGridFrameData
 {
-    // View-матрица камеры.
-    // Используется, например, для billboard-подписей маркера осей.
+    // View matrix текущей камеры.
     glm::dmat4 mView;
 
-    // View-projection матрица.
-    // Используется для вычисления глубины и проекции точек.
+    // Projection * View.
     glm::dmat4 mViewProj;
 
-    // Обратная view-projection матрица.
-    // Используется vertex shader'ом сетки для восстановления near/far точек fullscreen quad.
+    // Обратная матрица ViewProjection.
+    //
+    // Используется во fragment shader, чтобы восстановить луч
+    // текущего пикселя из gl_FragCoord.
     glm::dmat4 mInvViewProj;
 
-    // Размер framebuffer в пикселях.
-    // Используется для расчёта экранного масштаба adaptive grid.
+    // Размер viewport в пикселях.
     glm::dvec2 vViewportSize;
 
-    // true, если текущий кадр рендерится в ортографической проекции.
-    // Используется маркером начала координат.
+    // Сейчас используется только orthographic projection.
     bool bIsOrthographicProjection;
 };
 
-// Renderer аналитической координатной сетки.
+// Настройки внешнего вида сетки.
+struct SGridStyle
+{
+    // Шаг мелкой и крупной сетки в координатах сетки.
+    double dMinorStep;
+    double dMajorStep;
+
+    // Толщина линий в пикселях.
+    float fMinorThickness;
+    float fMajorThickness;
+    float fAxisThickness;
+
+    // Минимальный угол между лучом камеры и плоскостью сетки.
+    //
+    // Если камера смотрит почти вдоль плоскости, сетку лучше скрыть,
+    // чтобы не показывать сильно искажённые фрагменты.
+    double dMinViewNormalDot;
+
+    // Небольшой отступ от 0 и 1 для ручного depth clamp.
+    double dSafeDepthEpsilon;
+
+    // Debug-режим зон глубины.
+    bool bDebugDepthZones;
+
+    // Рисовать ли полупрозрачную заливку плоскости сетки.
+    bool bDrawPlane;
+
+    // Ограниченная или бесконечная сетка.
+    bool bIsBounded;
+
+    // Границы ограниченной сетки:
+    // xMin, yMin, xMax, yMax.
+    glm::dvec4 vBounds;
+
+    // Режим точек вместо линий.
+    bool bDrawDots;
+    float fDotRadius;
+
+    // Автоматически подбирать шаг сетки в зависимости от zoom.
+    bool bUseAdaptiveStep;
+
+    // Желаемый экранный шаг minor-сетки в пикселях.
+    double dTargetMinorStepPixels;
+
+    // Каждая N-я minor-линия становится major-линией.
+    int nMajorLineFrequency;
+
+    // Внутренние LOD-флаги отображения уровней сетки.
+    bool bShowMinorGrid;
+    bool bShowMajorGrid;
+    bool bShowAxes;
+
+    // Цвета верхней стороны плоскости сетки.
+    glm::vec4 vPlaneColorTop;
+    glm::vec4 vMinorColorTop;
+    glm::vec4 vMajorColorTop;
+    glm::vec4 vXAxisColorTop;
+    glm::vec4 vYAxisColorTop;
+
+    // Цвета нижней стороны плоскости сетки.
+    glm::vec4 vPlaneColorBottom;
+    glm::vec4 vMinorColorBottom;
+    glm::vec4 vMajorColorBottom;
+    glm::vec4 vXAxisColorBottom;
+    glm::vec4 vYAxisColorBottom;
+};
+
+// Рендерер аналитической координатной сетки.
 //
-// Геометрически renderer рисует один fullscreen quad.
-// Сама сетка вычисляется в shader program аналитически:
-// каждый фрагмент определяет, попал ли он в плоскость сетки,
-// в линию, в узел, в ось или в пустое место.
+// Сетка рисуется fullscreen quad'ом.
+// Вся основная логика находится во fragment shader:
+// - восстановление луча текущего пикселя;
+// - пересечение с плоскостью сетки;
+// - вычисление линий/точек;
+// - расчёт gl_FragDepth.
 class CGridRenderer
 {
 public:
-    // Создаёт renderer с дефолтной геометрией и стилем.
     CGridRenderer();
-
-    // Освобождает OpenGL-ресурсы renderer'а.
     ~CGridRenderer();
 
-    // Копирование и копирующее присваивание запрещено, потому что класс владеет OpenGL VAO.
+    // Копирование запрещено: класс владеет OpenGL VAO.
     CGridRenderer(const CGridRenderer&) = delete;
     CGridRenderer& operator=(const CGridRenderer&) = delete;
 
-    // Перемещающий конструктор передаёт владение OpenGL VAO.
     CGridRenderer(CGridRenderer&& other) noexcept;
-
-    // Перемещающее присваивание передаёт владение OpenGL VAO.
     CGridRenderer& operator=(CGridRenderer&& other) noexcept;
 
-    // Создаёт VAO для fullscreen triangle.
-    // Вершинный буфер не нужен, потому что вершины генерируются через gl_VertexID.
+    // Создаёт OpenGL-ресурсы.
     void Initialize();
 
-    // Удаляет VAO, если он был создан.
+    // Освобождает OpenGL-ресурсы.
     void Destroy();
 
-    // Задаёт текущую геометрию сетки.
+    // Задаёт геометрию плоскости сетки.
     void SetGeometry(const SGridGeometry& sGeometry);
 
-    // Задаёт текущий стиль сетки.
+    // Задаёт стиль отображения сетки.
     void SetStyle(const SGridStyle& sStyle);
 
-    // Возвращает текущую геометрию сетки.
     const SGridGeometry& GetGeometry() const;
-
-    // Возвращает текущий стиль сетки.
     const SGridStyle& GetStyle() const;
 
-    // Обновляет adaptive step по текущей камере и viewport.
+    // Пересчитывает adaptive step под текущий zoom.
     void UpdateAdaptiveStep(const SGridFrameData& sFrameData);
 
-    // Рисует сетку текущим shader program.
-    // Перед вызовом метод устанавливает все uniform-параметры:
-    // матрицы, геометрию сетки, шаги, цвета и режимы отображения.
-    void Render(const CShaderProgram& shaderProgram, const SGridFrameData& sFrameData) const;
+    // Рисует сетку.
+    void Render(
+        const CShaderProgram& shaderProgram,
+        const SGridFrameData& sFrameData
+    ) const;
 
 private:
-    // VAO для fullscreen triangle.
+    // VAO для fullscreen quad.
     GLuint m_nFullscreenVao;
 
     // Текущая геометрия сетки.
     SGridGeometry m_sGeometry;
 
-    // Текущий стиль и runtime-состояние сетки.
+    // Текущий стиль сетки.
     SGridStyle m_sStyle;
 };

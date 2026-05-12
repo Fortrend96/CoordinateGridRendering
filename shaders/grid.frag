@@ -2,24 +2,21 @@
 
 layout(location = 0) out vec4 outColor;
 
-// Frame data
 uniform dmat4 uViewProj;
 uniform dmat4 uInvViewProj;
 uniform dvec2 uViewportSize;
 
-// Grid geometry
 uniform dvec3 uGridOrigin;
 uniform dvec3 uGridAxisX;
 uniform dvec3 uGridAxisY;
 uniform dvec3 uGridNormal;
 
 uniform double uMinViewNormalDot;
-
-// Grid depth / debug
 uniform double uSafeDepthEpsilon;
 uniform bool uDebugDepthZones;
 
-// Grid modes
+uniform bool uDrawPlane;
+
 uniform bool uIsBounded;
 uniform dvec4 uGridBounds;
 
@@ -29,7 +26,6 @@ uniform bool uShowMinorGrid;
 uniform bool uShowMajorGrid;
 uniform bool uShowAxes;
 
-// Grid step / thickness
 uniform double uMinorStep;
 uniform double uMajorStep;
 
@@ -38,18 +34,18 @@ uniform float uMajorThickness;
 uniform float uAxisThickness;
 uniform float uDotRadius;
 
-// Colors
+uniform vec4 uPlaneColorTop;
 uniform vec4 uMinorColorTop;
 uniform vec4 uMajorColorTop;
 uniform vec4 uXAxisColorTop;
 uniform vec4 uYAxisColorTop;
 
+uniform vec4 uPlaneColorBottom;
 uniform vec4 uMinorColorBottom;
 uniform vec4 uMajorColorBottom;
 uniform vec4 uXAxisColorBottom;
 uniform vec4 uYAxisColorBottom;
 
-// Helpers
 double DistanceToGridLine(double dCoordinate, double dStep)
 {
     const double dNearestLine = round(dCoordinate / dStep) * dStep;
@@ -99,7 +95,7 @@ float CreateDotMask(
 
 void main()
 {
-    // Восстанавливаем луч текущего пикселя из gl_FragCoord.
+    // Восстанавливаем NDC текущего пикселя из gl_FragCoord.
     const dvec2 vNdc = dvec2(
         double(gl_FragCoord.x) / uViewportSize.x * 2.0 - 1.0,
         double(gl_FragCoord.y) / uViewportSize.y * 2.0 - 1.0
@@ -114,12 +110,14 @@ void main()
     vNearWorld /= vNearWorld.w;
     vFarWorld  /= vFarWorld.w;
 
+    // Переводим луч в локальные координаты сетки.
     const dvec3 vRayOriginLocal = vNearWorld.xyz - uGridOrigin;
     const dvec3 vRayFarLocal = vFarWorld.xyz - uGridOrigin;
     const dvec3 vRayDirection = normalize(vRayFarLocal - vRayOriginLocal);
 
     const double dDenom = dot(vRayDirection, uGridNormal);
 
+    // Если луч почти параллелен плоскости сетки, скрываем фрагмент.
     if (abs(dDenom) < uMinViewNormalDot)
     {
         discard;
@@ -254,6 +252,7 @@ void main()
         }
     }
 
+    // Рамка ограниченной сетки рисуется цветом major-линий.
     if (uIsBounded)
     {
         const float fBoundaryMinX = CreateLineMask(
@@ -288,11 +287,11 @@ void main()
 
     const bool bTopSide = dDenom < 0.0;
 
+    const vec4 vPlaneColor = bTopSide ? uPlaneColorTop : uPlaneColorBottom;
     const vec4 vMinorColor = bTopSide ? uMinorColorTop : uMinorColorBottom;
     const vec4 vMajorColor = bTopSide ? uMajorColorTop : uMajorColorBottom;
     const vec4 vXAxisColor = bTopSide ? uXAxisColorTop : uXAxisColorBottom;
     const vec4 vYAxisColor = bTopSide ? uYAxisColorTop : uYAxisColorBottom;
-
     const vec4 vBoundaryColor = vMajorColor;
 
     const float fGridMask = max(
@@ -300,12 +299,17 @@ void main()
         max(max(fBoundaryMask, fXAxisMask), fYAxisMask)
     );
 
-    if (fGridMask <= 0.001 && !uDebugDepthZones)
+    // Если нет линий, нет заливки и не включён debug, фрагмент не нужен.
+    if (fGridMask <= 0.001 && !uDrawPlane && !uDebugDepthZones)
     {
         discard;
     }
 
-    vec4 vColor = vec4(0.0);
+    // Если заливка включена, начинаем цвет с цвета плоскости.
+    // Если выключена — рисуем только линии/точки/оси/рамку.
+    vec4 vColor = uDrawPlane
+        ? vPlaneColor
+        : vec4(0.0);
 
     vColor = mix(vColor, vMinorColor, fMinorMask);
     vColor = mix(vColor, vMajorColor, fMajorMask);
@@ -318,19 +322,19 @@ void main()
         discard;
     }
 
-    // Считаем глубину точки сетки и всегда прижимаем её к безопасному диапазону.
     const dvec3 vWorldPosition = uGridOrigin + vLocalPosition;
     const dvec4 vClipPosition = uViewProj * dvec4(vWorldPosition, 1.0);
 
     const double dNdcZ = vClipPosition.z / vClipPosition.w;
     const double dRawDepth = dNdcZ * 0.5 + 0.5;
 
-    double dSafeMinDepth = clamp(uSafeDepthEpsilon, 0.0, 0.499999);
-    double dSafeMaxDepth = clamp(1.0 - uSafeDepthEpsilon, 0.500001, 1.0);
+    const double dSafeMinDepth = clamp(uSafeDepthEpsilon, 0.0, 0.499999);
+    const double dSafeMaxDepth = clamp(1.0 - uSafeDepthEpsilon, 0.500001, 1.0);
 
     const bool bNearDepthZone = dRawDepth < dSafeMinDepth;
     const bool bFarDepthZone = dRawDepth > dSafeMaxDepth;
 
+    // Ручной depth clamp всегда включён.
     const double dDepth = clamp(
         dRawDepth,
         dSafeMinDepth,

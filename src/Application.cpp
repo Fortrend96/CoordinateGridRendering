@@ -1,7 +1,5 @@
 #include "Application.h"
 
-#include "OrbitCamera.h"
-
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
@@ -15,15 +13,22 @@ CApplication::CApplication()
     , m_nInitialWindowWidth(1280)
     , m_nInitialWindowHeight(720)
     , m_dDefaultCameraDistance(24.0)
+
+    // Вид сверху: X вправо, Y вверх.
     , m_dDefaultCameraYawRadians(glm::radians(-90.0))
+
+    // Почти вертикальный угол вместо ровных 90 градусов.
+    // Это помогает избежать вырождения базиса камеры.
     , m_dDefaultCameraPitchRadians(glm::radians(89.9))
+
     , m_bWasBPressed(false)
     , m_bWasMPressed(false)
+    , m_bWasFPressed(false)
     , m_bWasGPressed(false)
-    , m_bShowDemoObjects(true)
     , m_bWasOPressed(false)
-    , m_bGridXrayMode(false)
     , m_bWasXPressed(false)
+    , m_bShowDemoObjects(true)
+    , m_bGridXrayMode(false)
 {
 }
 
@@ -76,6 +81,8 @@ void CApplication::CreateWindow()
     }
 
     glfwMakeContextCurrent(m_pWindow);
+
+    // Включаем вертикальную синхронизацию.
     glfwSwapInterval(1);
 }
 
@@ -123,14 +130,11 @@ void CApplication::InitializeScene()
     m_axisMarkerRenderer.Initialize();
     m_demoSceneRenderer.Initialize();
 
+    // Стиль сетки берём из CGridRenderer.
+    // Дальше приложение меняет только параметры, для которых есть управление.
     m_sGridStyle = m_gridRenderer.GetStyle();
 
-    // Фиксируем нужные значения по умолчанию.
-    m_sGridStyle.bDebugDepthZones = false;
-
-    m_gridRenderer.SetStyle(m_sGridStyle);
-
-    // Оставляем только простой рабочий preset.
+    // В демо оставлена одна стандартная координатная плоскость XOY.
     m_sGridGeometry = CreateDefaultGridGeometry();
 
     m_pCamera = std::make_unique<COrbitCamera>(
@@ -204,6 +208,20 @@ void CApplication::ProcessInput()
 
     m_bWasMPressed = bIsMPressed;
 
+    const bool bIsFPressed = glfwGetKey(m_pWindow, GLFW_KEY_F) == GLFW_PRESS;
+
+    if (bIsFPressed && !m_bWasFPressed)
+    {
+        m_sGridStyle.bDrawPlane = !m_sGridStyle.bDrawPlane;
+        m_gridRenderer.SetStyle(m_sGridStyle);
+
+        std::cout << "Grid plane fill: "
+            << (m_sGridStyle.bDrawPlane ? "enabled" : "disabled")
+            << '\n';
+    }
+
+    m_bWasFPressed = bIsFPressed;
+
     const bool bIsGPressed = glfwGetKey(m_pWindow, GLFW_KEY_G) == GLFW_PRESS;
 
     if (bIsGPressed && !m_bWasGPressed)
@@ -258,7 +276,7 @@ void CApplication::RenderFrame()
 
     glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
 
-    // 1. Очищаем framebuffer.
+    // Очищаем цвет и depth buffer перед новым кадром.
     glClearColor(0.145f, 0.176f, 0.223f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -267,7 +285,6 @@ void CApplication::RenderFrame()
         return;
     }
 
-    // 2. Формируем матрицы текущего кадра.
     const glm::dmat4 mView = m_pCamera->GetViewMatrix();
 
     const double dAspect =
@@ -293,27 +310,23 @@ void CApplication::RenderFrame()
     const glm::dmat4 mViewProj = mProjection * mView;
     const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
 
-    // 3. Заполняем общие данные кадра.
     SGridFrameData sFrameData;
-
     sFrameData.mView = mView;
     sFrameData.mViewProj = mViewProj;
     sFrameData.mInvViewProj = mInvViewProj;
-
     sFrameData.vViewportSize = glm::dvec2(
         static_cast<double>(nFramebufferWidth),
         static_cast<double>(nFramebufferHeight)
     );
 
-    // Перспективная проекция убрана.
+    // В демо оставлена только ортографическая проекция.
     sFrameData.bIsOrthographicProjection = true;
 
-    // 4. Рисуем модельные объекты тестовой сцены.
+    // Сначала рисуем модельные объекты.
+    // Они записывают свою глубину в depth buffer.
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
-
     glDepthMask(GL_TRUE);
-
     glDisable(GL_BLEND);
 
     if (m_bShowDemoObjects)
@@ -325,31 +338,27 @@ void CApplication::RenderFrame()
         );
     }
 
-    // 5. Рисуем аналитическую сетку.
     m_gridRenderer.SetGeometry(m_sGridGeometry);
-
-    // Adaptive step пересчитывается каждый кадр, потому что масштаб сетки
-    // зависит от текущей камеры, projection matrix и viewport size.
     m_gridRenderer.UpdateAdaptiveStep(sFrameData);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Сетка не должна писать глубину в depth buffer.
+    // Сетка не пишет глубину.
+    //
+    // Обычный режим:
+    //   сетка проверяется по depth buffer и перекрывается объектами.
+    //
+    // X-ray режим:
+    //   depth test для сетки отключается, поэтому сетка видна поверх объектов.
     glDepthMask(GL_FALSE);
 
     if (m_bGridXrayMode)
     {
-        // X-ray режим:
-        // Сетка проходит через фигуры, потому что depth test отключён.
-        // Объекты не могут перекрыть линии сетки.
         glDisable(GL_DEPTH_TEST);
     }
     else
     {
-        // Обычный режим:
-        // Сетка взаимодействует с объектами через depth buffer.
-        // Если объект ближе камеры, он перекрывает сетку.
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
     }
@@ -359,12 +368,12 @@ void CApplication::RenderFrame()
         sFrameData
     );
 
-    // Возвращаем стандартное состояние depth.
+    // Возвращаем depth-состояние после отрисовки сетки.
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
-    // 6. Рисуем маркер начала СК
+    // Маркер начала координат рисуется как отдельная вспомогательная сущность.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -374,7 +383,7 @@ void CApplication::RenderFrame()
         m_sGridGeometry
     );
 
-    // 7. Возвращаем безопасные OpenGL-состояния.
+    // Базовое состояние на следующий кадр.
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -396,6 +405,24 @@ void CApplication::Shutdown()
     glfwTerminate();
 }
 
+SGridGeometry CApplication::CreateDefaultGridGeometry() const
+{
+    SGridGeometry sGeometry;
+
+    sGeometry.vOrigin = glm::dvec3(0.0, 0.0, 0.0);
+    sGeometry.vAxisX = glm::dvec3(1.0, 0.0, 0.0);
+    sGeometry.vAxisY = glm::dvec3(0.0, 1.0, 0.0);
+
+    sGeometry.vNormal = glm::normalize(
+        glm::cross(
+            sGeometry.vAxisX,
+            sGeometry.vAxisY
+        )
+    );
+
+    return sGeometry;
+}
+
 void CApplication::CalculateCameraClippingPlanes(
     double& dNearPlane,
     double& dFarPlane
@@ -406,6 +433,7 @@ void CApplication::CalculateCameraClippingPlanes(
         ? m_pCamera->GetDistance()
         : m_dDefaultCameraDistance;
 
+    // Подстраиваем near/far под текущий zoom.
     dNearPlane = std::clamp(
         dCameraDistance * 0.0005,
         0.00001,
@@ -429,6 +457,7 @@ glm::dmat4 CApplication::CreateProjectionMatrix(
     double dFarPlane
 ) const
 {
+    // В ортографической проекции distance камеры используется как zoom.
     const double dOrthographicHalfHeight =
         m_pCamera != nullptr
         ? m_pCamera->GetDistance()
@@ -585,6 +614,7 @@ void CApplication::PrintControls() const
     std::cout << "  R                                  : reset camera\n";
     std::cout << "  B                                  : toggle infinite/bounded grid\n";
     std::cout << "  M                                  : toggle lines/dots mode\n";
+    std::cout << "  F                                  : toggle grid plane fill\n";
     std::cout << "  G                                  : toggle depth zones debug view\n";
     std::cout << "  O                                  : toggle demo objects\n";
     std::cout << "  X                                  : toggle grid x-ray mode\n";
@@ -602,6 +632,10 @@ void CApplication::PrintInitialState() const
 
     std::cout << "Grid mode: "
         << (m_sGridStyle.bDrawDots ? "dots" : "lines")
+        << '\n';
+
+    std::cout << "Grid plane fill: "
+        << (m_sGridStyle.bDrawPlane ? "enabled" : "disabled")
         << '\n';
 
     std::cout << "Depth zones debug: "
@@ -767,32 +801,9 @@ void CApplication::ScrollCallback(
         return;
     }
 
+    // Компенсируем смещение target, чтобы zoom происходил к курсору.
     const glm::dvec3 vTargetCorrection =
         vGridPointBeforeZoom - vGridPointAfterZoom;
 
     pCamera->SetTarget(pCamera->GetTarget() + vTargetCorrection);
-}
-
-SGridGeometry CApplication::CreateDefaultGridGeometry() const
-{
-    SGridGeometry sGeometry;
-
-    // Начало координат сетки.
-    sGeometry.vOrigin = glm::dvec3(0.0, 0.0, 0.0);
-
-    // Ось X сетки.
-    sGeometry.vAxisX = glm::dvec3(1.0, 0.0, 0.0);
-
-    // Ось Y сетки.
-    sGeometry.vAxisY = glm::dvec3(0.0, 1.0, 0.0);
-
-    // Нормаль плоскости сетки.
-    sGeometry.vNormal = glm::normalize(
-        glm::cross(
-            sGeometry.vAxisX,
-            sGeometry.vAxisY
-        )
-    );
-
-    return sGeometry;
 }

@@ -117,3 +117,13 @@ add_custom_command(
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
     COMMENT "Copying shaders to output directory"
 )
+
+set_property(
+	DIRECTORY
+	PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME}
+)
+
+set_property(
+    TARGET ${PROJECT_NAME}
+    PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+)
