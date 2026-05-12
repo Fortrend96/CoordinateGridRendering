@@ -2,14 +2,14 @@
 
 layout(location = 0) out vec4 outColor;
 
-uniform dmat4 uViewProj;
-uniform dmat4 uInvViewProj;
+uniform dmat4 uProjection;
+uniform dmat4 uInvProjection;
 uniform dvec2 uViewportSize;
 
-uniform dvec3 uGridOrigin;
-uniform dvec3 uGridAxisX;
-uniform dvec3 uGridAxisY;
-uniform dvec3 uGridNormal;
+uniform dvec3 uGridOriginEye;
+uniform dvec3 uGridAxisXEye;
+uniform dvec3 uGridAxisYEye;
+uniform dvec3 uGridNormalEye;
 
 uniform double uMinViewNormalDot;
 uniform double uSafeDepthEpsilon;
@@ -104,18 +104,17 @@ void main()
     const dvec4 vNearClip = dvec4(vNdc.x, vNdc.y, -1.0, 1.0);
     const dvec4 vFarClip  = dvec4(vNdc.x, vNdc.y,  1.0, 1.0);
 
-    dvec4 vNearWorld = uInvViewProj * vNearClip;
-    dvec4 vFarWorld  = uInvViewProj * vFarClip;
+    dvec4 vNearEye = uInvProjection * vNearClip;
+    dvec4 vFarEye  = uInvProjection * vFarClip;
 
-    vNearWorld /= vNearWorld.w;
-    vFarWorld  /= vFarWorld.w;
+    vNearEye /= vNearEye.w;
+    vFarEye  /= vFarEye.w;
 
-    // Переводим луч в локальные координаты сетки.
-    const dvec3 vRayOriginLocal = vNearWorld.xyz - uGridOrigin;
-    const dvec3 vRayFarLocal = vFarWorld.xyz - uGridOrigin;
-    const dvec3 vRayDirection = normalize(vRayFarLocal - vRayOriginLocal);
+    // Луч текущего пикселя в eye-space.
+    const dvec3 vRayOriginEye = vNearEye.xyz;
+    const dvec3 vRayDirectionEye = normalize(vFarEye.xyz - vNearEye.xyz);
 
-    const double dDenom = dot(vRayDirection, uGridNormal);
+    const double dDenom = dot(vRayDirectionEye, uGridNormalEye);
 
     // Если луч почти параллелен плоскости сетки, скрываем фрагмент.
     if (abs(dDenom) < uMinViewNormalDot)
@@ -123,12 +122,21 @@ void main()
         discard;
     }
 
-    // Пересечение луча с плоскостью сетки.
-    const double dT = -dot(vRayOriginLocal, uGridNormal) / dDenom;
-    const dvec3 vLocalPosition = vRayOriginLocal + vRayDirection * dT;
+    // Пересечение eye-space луча с eye-space плоскостью сетки.
+    const double dT =
+        dot(uGridOriginEye - vRayOriginEye, uGridNormalEye) / dDenom;
 
-    const double dGridX = dot(vLocalPosition, uGridAxisX);
-    const double dGridY = dot(vLocalPosition, uGridAxisY);
+    const dvec3 vGridPointEye =
+        vRayOriginEye + vRayDirectionEye * dT;
+
+    const dvec3 vGridPointFromOriginEye =
+        vGridPointEye - uGridOriginEye;
+
+    const double dGridX =
+        dot(vGridPointFromOriginEye, uGridAxisXEye);
+
+    const double dGridY =
+        dot(vGridPointFromOriginEye, uGridAxisYEye);
 
     if (uIsBounded)
     {
@@ -322,17 +330,27 @@ void main()
         discard;
     }
 
-    const dvec3 vWorldPosition = uGridOrigin + vLocalPosition;
-    const dvec4 vClipPosition = uViewProj * dvec4(vWorldPosition, 1.0);
+    // Depth считаем из eye-space позиции через projection.
+    const dvec4 vClipPosition =
+        uProjection * dvec4(vGridPointEye, 1.0);
 
-    const double dNdcZ = vClipPosition.z / vClipPosition.w;
-    const double dRawDepth = dNdcZ * 0.5 + 0.5;
+    const double dNdcZ =
+        vClipPosition.z / vClipPosition.w;
 
-    const double dSafeMinDepth = clamp(uSafeDepthEpsilon, 0.0, 0.499999);
-    const double dSafeMaxDepth = clamp(1.0 - uSafeDepthEpsilon, 0.500001, 1.0);
+    const double dRawDepth =
+        dNdcZ * 0.5 + 0.5;
 
-    const bool bNearDepthZone = dRawDepth < dSafeMinDepth;
-    const bool bFarDepthZone = dRawDepth > dSafeMaxDepth;
+    const double dSafeMinDepth =
+        clamp(uSafeDepthEpsilon, 0.0, 0.499999);
+
+    const double dSafeMaxDepth =
+        clamp(1.0 - uSafeDepthEpsilon, 0.500001, 1.0);
+
+    const bool bNearDepthZone =
+        dRawDepth < dSafeMinDepth;
+
+    const bool bFarDepthZone =
+        dRawDepth > dSafeMaxDepth;
 
     // Ручной depth clamp всегда включён.
     const double dDepth = clamp(

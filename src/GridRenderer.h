@@ -8,7 +8,7 @@
 
 // Геометрия координатной сетки в world-space.
 //
-// Сетка задаётся не готовой геометрией линий, а плоскостью:
+// Сетка задаётся не набором линий, а плоскостью:
 // origin + axisX * x + axisY * y.
 struct SGridGeometry
 {
@@ -31,14 +31,19 @@ struct SGridFrameData
     // View matrix текущей камеры.
     glm::dmat4 mView;
 
-    // Projection * View.
-    glm::dmat4 mViewProj;
+    // Projection matrix текущей камеры.
+    glm::dmat4 mProjection;
 
-    // Обратная матрица ViewProjection.
+    // Inverse projection matrix.
     //
-    // Используется во fragment shader, чтобы восстановить луч
+    // Во fragment shader используется для восстановления eye-space луча
     // текущего пикселя из gl_FragCoord.
-    glm::dmat4 mInvViewProj;
+    glm::dmat4 mInvProjection;
+
+    // Projection * View.
+    //
+    // Используется на CPU для подбора adaptive step.
+    glm::dmat4 mViewProj;
 
     // Размер viewport в пикселях.
     glm::dvec2 vViewportSize;
@@ -50,9 +55,11 @@ struct SGridFrameData
 // Настройки внешнего вида сетки.
 struct SGridStyle
 {
-    // Шаг мелкой и крупной сетки в координатах сетки.
+    // Малый шаг сетки в локальных единицах сетки.
     double dMinorStep;
-    double dMajorStep;
+
+    // Количество малых шагов в одном большом шаге.
+    int nMajorLineFrequency;
 
     // Толщина линий в пикселях.
     float fMinorThickness;
@@ -91,9 +98,6 @@ struct SGridStyle
     // Желаемый экранный шаг minor-сетки в пикселях.
     double dTargetMinorStepPixels;
 
-    // Каждая N-я minor-линия становится major-линией.
-    int nMajorLineFrequency;
-
     // Внутренние LOD-флаги отображения уровней сетки.
     bool bShowMinorGrid;
     bool bShowMajorGrid;
@@ -118,8 +122,8 @@ struct SGridStyle
 //
 // Сетка рисуется fullscreen quad'ом.
 // Вся основная логика находится во fragment shader:
-// - восстановление луча текущего пикселя;
-// - пересечение с плоскостью сетки;
+// - восстановление eye-space луча текущего пикселя;
+// - пересечение с eye-space плоскостью сетки;
 // - вычисление линий/точек;
 // - расчёт gl_FragDepth.
 class CGridRenderer

@@ -276,7 +276,7 @@ void CApplication::RenderFrame()
 
     glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
 
-    // Очищаем цвет и depth buffer перед новым кадром.
+    // Тёмный CAD-like фон model space.
     glClearColor(0.145f, 0.176f, 0.223f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -308,12 +308,13 @@ void CApplication::RenderFrame()
     );
 
     const glm::dmat4 mViewProj = mProjection * mView;
-    const glm::dmat4 mInvViewProj = glm::inverse(mViewProj);
+    const glm::dmat4 mInvProjection = glm::inverse(mProjection);
 
     SGridFrameData sFrameData;
     sFrameData.mView = mView;
+    sFrameData.mProjection = mProjection;
+    sFrameData.mInvProjection = mInvProjection;
     sFrameData.mViewProj = mViewProj;
-    sFrameData.mInvViewProj = mInvViewProj;
     sFrameData.vViewportSize = glm::dvec2(
         static_cast<double>(nFramebufferWidth),
         static_cast<double>(nFramebufferHeight)

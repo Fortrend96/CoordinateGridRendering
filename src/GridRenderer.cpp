@@ -5,6 +5,21 @@
 
 namespace
 {
+    glm::dvec3 SafeNormalize(
+        const glm::dvec3& vVector,
+        const glm::dvec3& vFallback
+    )
+    {
+        const double dLength = glm::length(vVector);
+
+        if (dLength <= 1e-12)
+        {
+            return vFallback;
+        }
+
+        return vVector / dLength;
+    }
+
     bool ProjectWorldPointToScreen(
         const glm::dmat4& mViewProj,
         const glm::dvec3& vWorldPosition,
@@ -39,7 +54,8 @@ namespace
         glm::dvec2 vScreenOrigin(0.0);
         glm::dvec2 vScreenUnit(0.0);
 
-        const glm::dvec3 vNormalizedDirection = glm::normalize(vDirection);
+        const glm::dvec3 vNormalizedDirection =
+            SafeNormalize(vDirection, glm::dvec3(1.0, 0.0, 0.0));
 
         const bool bOriginProjected = ProjectWorldPointToScreen(
             mViewProj,
@@ -102,7 +118,7 @@ CGridRenderer::CGridRenderer()
     m_sGeometry.vNormal = glm::dvec3(0.0, 0.0, 1.0);
 
     m_sStyle.dMinorStep = 1.0;
-    m_sStyle.dMajorStep = 10.0;
+    m_sStyle.nMajorLineFrequency = 10;
 
     m_sStyle.fMinorThickness = 0.75f;
     m_sStyle.fMajorThickness = 1.05f;
@@ -124,7 +140,6 @@ CGridRenderer::CGridRenderer()
 
     m_sStyle.bUseAdaptiveStep = true;
     m_sStyle.dTargetMinorStepPixels = 28.0;
-    m_sStyle.nMajorLineFrequency = 10;
 
     m_sStyle.bShowMinorGrid = true;
     m_sStyle.bShowMajorGrid = true;
@@ -139,7 +154,6 @@ CGridRenderer::CGridRenderer()
     m_sStyle.vYAxisColorTop = glm::vec4(0.180f, 0.730f, 0.300f, 1.00f);
 
     // Цвета нижней стороны сетки.
-    // Делаем их чуть темнее, чтобы при взгляде снизу плоскость отличалась.
     m_sStyle.vPlaneColorBottom = glm::vec4(0.090f, 0.105f, 0.125f, 0.18f);
     m_sStyle.vMinorColorBottom = glm::vec4(0.200f, 0.230f, 0.270f, 0.18f);
     m_sStyle.vMajorColorBottom = glm::vec4(0.310f, 0.350f, 0.400f, 0.52f);
@@ -252,21 +266,24 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
         return;
     }
 
-    // Подбираем шаг minor-сетки так, чтобы она имела стабильный экранный размер.
+    // Подбираем только minor step.
+    // Major step всегда вычисляется как minorStep * majorLineFrequency.
     const double dDesiredMinorStep =
         m_sStyle.dTargetMinorStepPixels / dPixelsPerWorldUnit;
 
-    const double dMinorStep = RoundUpToNiceStep(dDesiredMinorStep);
+    m_sStyle.dMinorStep = RoundUpToNiceStep(dDesiredMinorStep);
 
-    const int nMajorLineFrequency = std::max(m_sStyle.nMajorLineFrequency, 1);
+    const int nMajorLineFrequency =
+        std::max(m_sStyle.nMajorLineFrequency, 1);
+
     const double dMajorStep =
-        dMinorStep * static_cast<double>(nMajorLineFrequency);
+        m_sStyle.dMinorStep * static_cast<double>(nMajorLineFrequency);
 
-    m_sStyle.dMinorStep = dMinorStep;
-    m_sStyle.dMajorStep = dMajorStep;
+    const double dMinorStepPixels =
+        m_sStyle.dMinorStep * dPixelsPerWorldUnit;
 
-    const double dMinorStepPixels = dMinorStep * dPixelsPerWorldUnit;
-    const double dMajorStepPixels = dMajorStep * dPixelsPerWorldUnit;
+    const double dMajorStepPixels =
+        dMajorStep * dPixelsPerWorldUnit;
 
     // Слишком плотную minor-сетку скрываем, чтобы уменьшить муар.
     m_sStyle.bShowMinorGrid = dMinorStepPixels >= 14.0;
@@ -281,14 +298,36 @@ void CGridRenderer::Render(
 {
     shaderProgram.Use();
 
-    shaderProgram.SetUniformMat4d("uViewProj", sFrameData.mViewProj);
-    shaderProgram.SetUniformMat4d("uInvViewProj", sFrameData.mInvViewProj);
+    // В shader передаём только projection/invProjection.
+    // Луч пикселя восстанавливается в eye-space.
+    shaderProgram.SetUniformMat4d("uProjection", sFrameData.mProjection);
+    shaderProgram.SetUniformMat4d("uInvProjection", sFrameData.mInvProjection);
     shaderProgram.SetUniformVec2d("uViewportSize", sFrameData.vViewportSize);
 
-    shaderProgram.SetUniformVec3d("uGridOrigin", m_sGeometry.vOrigin);
-    shaderProgram.SetUniformVec3d("uGridAxisX", m_sGeometry.vAxisX);
-    shaderProgram.SetUniformVec3d("uGridAxisY", m_sGeometry.vAxisY);
-    shaderProgram.SetUniformVec3d("uGridNormal", m_sGeometry.vNormal);
+    // Параметры сетки переводим из world-space в eye-space на CPU.
+    const glm::dvec3 vOriginEye = glm::dvec3(
+        sFrameData.mView * glm::dvec4(m_sGeometry.vOrigin, 1.0)
+    );
+
+    const glm::dvec3 vAxisXEye = SafeNormalize(
+        glm::dvec3(sFrameData.mView * glm::dvec4(m_sGeometry.vAxisX, 0.0)),
+        glm::dvec3(1.0, 0.0, 0.0)
+    );
+
+    const glm::dvec3 vAxisYEye = SafeNormalize(
+        glm::dvec3(sFrameData.mView * glm::dvec4(m_sGeometry.vAxisY, 0.0)),
+        glm::dvec3(0.0, 1.0, 0.0)
+    );
+
+    const glm::dvec3 vNormalEye = SafeNormalize(
+        glm::cross(vAxisXEye, vAxisYEye),
+        glm::dvec3(0.0, 0.0, 1.0)
+    );
+
+    shaderProgram.SetUniformVec3d("uGridOriginEye", vOriginEye);
+    shaderProgram.SetUniformVec3d("uGridAxisXEye", vAxisXEye);
+    shaderProgram.SetUniformVec3d("uGridAxisYEye", vAxisYEye);
+    shaderProgram.SetUniformVec3d("uGridNormalEye", vNormalEye);
 
     shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
     shaderProgram.SetUniform1d("uSafeDepthEpsilon", m_sStyle.dSafeDepthEpsilon);
@@ -305,8 +344,14 @@ void CGridRenderer::Render(
     shaderProgram.SetUniform1i("uShowMajorGrid", m_sStyle.bShowMajorGrid ? 1 : 0);
     shaderProgram.SetUniform1i("uShowAxes", m_sStyle.bShowAxes ? 1 : 0);
 
+    const int nMajorLineFrequency =
+        std::max(m_sStyle.nMajorLineFrequency, 1);
+
+    const double dMajorStep =
+        m_sStyle.dMinorStep * static_cast<double>(nMajorLineFrequency);
+
     shaderProgram.SetUniform1d("uMinorStep", m_sStyle.dMinorStep);
-    shaderProgram.SetUniform1d("uMajorStep", m_sStyle.dMajorStep);
+    shaderProgram.SetUniform1d("uMajorStep", dMajorStep);
 
     shaderProgram.SetUniform1f("uMinorThickness", m_sStyle.fMinorThickness);
     shaderProgram.SetUniform1f("uMajorThickness", m_sStyle.fMajorThickness);

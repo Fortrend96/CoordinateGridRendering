@@ -145,44 +145,26 @@ private:
     // Shader-программа тестовых модельных объектов.
     CShaderProgram m_sceneObjectShaderProgram;
 
-    // Рендерер аналитической координатной сетки.
+    // Рендереры сцены.
     CGridRenderer m_gridRenderer;
-
-    // Рендерер маркера начала координат.
     CAxisMarkerRenderer m_axisMarkerRenderer;
-
-    // Рендерер тестовых объектов сцены.
     CDemoSceneRenderer m_demoSceneRenderer;
 
-    // Текущий стиль сетки.
+    // Текущие параметры сетки.
     SGridStyle m_sGridStyle;
-
-    // Текущая геометрия сетки.
     SGridGeometry m_sGridGeometry;
 
     // Orbit-камера.
     std::unique_ptr<COrbitCamera> m_pCamera;
 
-    // Начальная дистанция камеры.
+    // Начальные параметры камеры.
     double m_dDefaultCameraDistance;
-
-    // Начальный yaw камеры.
-    //
-    // Подобран так, чтобы при запуске:
-    // - ось X была направлена вправо;
-    // - ось Y была направлена вверх.
     double m_dDefaultCameraYawRadians;
-
-    // Начальный pitch камеры для вида сверху.
-    //
-    // Используется почти вертикальный угол, чтобы не получить вырождение
-    // базиса камеры.
     double m_dDefaultCameraPitchRadians;
 
     // Состояния клавиш на прошлом кадре.
     //
-    // Нужны, чтобы переключатели срабатывали один раз на нажатие,
-    // а не каждый кадр при удержании клавиши.
+    // Нужны, чтобы переключатели срабатывали один раз на нажатие.
     bool m_bWasBPressed;
     bool m_bWasMPressed;
     bool m_bWasFPressed;
@@ -191,16 +173,9 @@ private:
     bool m_bWasXPressed;
 
     // Показывать ли тестовые модельные объекты.
-    //
-    // Эти объекты нужны для проверки взаимодействия сетки с depth buffer.
     bool m_bShowDemoObjects;
 
-    // Режим отображения сетки поверх объектов.
-    //
-    // false:
-    //   сетка участвует в depth test и корректно перекрывается объектами.
-    //
-    // true:
-    //   depth test для сетки отключается, поэтому сетка видна поверх фигур.
+    // false — сетка участвует в depth test.
+    // true  — сетка рисуется поверх объектов.
     bool m_bGridXrayMode;
 };
