@@ -11,6 +11,10 @@ uniform dvec3 uGridAxisXEye;
 uniform dvec3 uGridAxisYEye;
 uniform dvec3 uGridNormalEye;
 
+// Anchor для построения маски линий.
+// Он находится около текущей видимой области и привязан к major step.
+uniform dvec3 uGridPatternOriginEye;
+
 uniform double uMinViewNormalDot;
 uniform double uSafeDepthEpsilon;
 uniform bool uDebugDepthZones;
@@ -48,7 +52,9 @@ uniform vec4 uYAxisColorBottom;
 
 double DistanceToGridLine(double dCoordinate, double dStep)
 {
-    const double dNearestLine = round(dCoordinate / dStep) * dStep;
+    const double dNearestLine =
+        round(dCoordinate / dStep) * dStep;
+
     return abs(dCoordinate - dNearestLine);
 }
 
@@ -61,7 +67,9 @@ float CreateLineMask(
     const float fDistancePixels =
         float(dDistanceToLine) / max(fCoordinatePixelWidth, 1e-6);
 
-    const float fHalfThickness = max(fThicknessPixels * 0.5, 0.35);
+    const float fHalfThickness =
+        max(fThicknessPixels * 0.5, 0.35);
+
     const float fAntiAliasWidth = 0.75;
 
     return 1.0 - smoothstep(
@@ -84,7 +92,8 @@ float CreateDotMask(
         float(dDistanceY) / max(fPixelWidthY, 1e-6)
     );
 
-    const float fDistance = length(vDistancePixels);
+    const float fDistance =
+        length(vDistancePixels);
 
     return 1.0 - smoothstep(
         fRadiusPixels,
@@ -101,20 +110,30 @@ void main()
         double(gl_FragCoord.y) / uViewportSize.y * 2.0 - 1.0
     );
 
-    const dvec4 vNearClip = dvec4(vNdc.x, vNdc.y, -1.0, 1.0);
-    const dvec4 vFarClip  = dvec4(vNdc.x, vNdc.y,  1.0, 1.0);
+    const dvec4 vNearClip =
+        dvec4(vNdc.x, vNdc.y, -1.0, 1.0);
 
-    dvec4 vNearEye = uInvProjection * vNearClip;
-    dvec4 vFarEye  = uInvProjection * vFarClip;
+    const dvec4 vFarClip =
+        dvec4(vNdc.x, vNdc.y, 1.0, 1.0);
+
+    dvec4 vNearEye =
+        uInvProjection * vNearClip;
+
+    dvec4 vFarEye =
+        uInvProjection * vFarClip;
 
     vNearEye /= vNearEye.w;
-    vFarEye  /= vFarEye.w;
+    vFarEye /= vFarEye.w;
 
     // Луч текущего пикселя в eye-space.
-    const dvec3 vRayOriginEye = vNearEye.xyz;
-    const dvec3 vRayDirectionEye = normalize(vFarEye.xyz - vNearEye.xyz);
+    const dvec3 vRayOriginEye =
+        vNearEye.xyz;
 
-    const double dDenom = dot(vRayDirectionEye, uGridNormalEye);
+    const dvec3 vRayDirectionEye =
+        normalize(vFarEye.xyz - vNearEye.xyz);
+
+    const double dDenom =
+        dot(vRayDirectionEye, uGridNormalEye);
 
     // Если луч почти параллелен плоскости сетки, скрываем фрагмент.
     if (abs(dDenom) < uMinViewNormalDot)
@@ -126,9 +145,15 @@ void main()
     const double dT =
         dot(uGridOriginEye - vRayOriginEye, uGridNormalEye) / dDenom;
 
+    // dT может быть отрицательным, если точка сетки находится перед near plane.
+    // Такой фрагмент не отбрасываем: ниже depth будет вручную прижат к безопасному диапазону.
     const dvec3 vGridPointEye =
         vRayOriginEye + vRayDirectionEye * dT;
 
+    // Абсолютные координаты в системе сетки.
+    //
+    // Они нужны для bounded-режима и осей, которые привязаны к настоящему
+    // origin сетки.
     const dvec3 vGridPointFromOriginEye =
         vGridPointEye - uGridOriginEye;
 
@@ -151,17 +176,45 @@ void main()
         }
     }
 
-    const double dMinorDistanceX = DistanceToGridLine(dGridX, uMinorStep);
-    const double dMinorDistanceY = DistanceToGridLine(dGridY, uMinorStep);
+    // Локальные координаты pattern'а относительно anchor.
+    //
+    // Именно они используются для round/distance-to-line.
+    // Это защищает сетку от потери точности при больших абсолютных
+    // координатах на плоскости.
+    const dvec3 vGridPointFromPatternOriginEye =
+        vGridPointEye - uGridPatternOriginEye;
 
-    const double dMajorDistanceX = DistanceToGridLine(dGridX, uMajorStep);
-    const double dMajorDistanceY = DistanceToGridLine(dGridY, uMajorStep);
+    const double dPatternX =
+        dot(vGridPointFromPatternOriginEye, uGridAxisXEye);
 
-    const float fGridX = float(dGridX);
-    const float fGridY = float(dGridY);
+    const double dPatternY =
+        dot(vGridPointFromPatternOriginEye, uGridAxisYEye);
 
-    const float fPixelWidthX = max(fwidth(fGridX), 1e-6);
-    const float fPixelWidthY = max(fwidth(fGridY), 1e-6);
+    const double dMinorDistanceX =
+        DistanceToGridLine(dPatternX, uMinorStep);
+
+    const double dMinorDistanceY =
+        DistanceToGridLine(dPatternY, uMinorStep);
+
+    const double dMajorDistanceX =
+        DistanceToGridLine(dPatternX, uMajorStep);
+
+    const double dMajorDistanceY =
+        DistanceToGridLine(dPatternY, uMajorStep);
+
+    // fwidth тоже считаем от локальных pattern-координат, а не от больших
+    // абсолютных gridX/gridY.
+    const float fPatternX =
+        float(dPatternX);
+
+    const float fPatternY =
+        float(dPatternY);
+
+    const float fPixelWidthX =
+        max(fwidth(fPatternX), 1e-6);
+
+    const float fPixelWidthY =
+        max(fwidth(fPatternY), 1e-6);
 
     float fMinorMask = 0.0;
     float fMajorMask = 0.0;
@@ -260,7 +313,7 @@ void main()
         }
     }
 
-    // Рамка ограниченной сетки рисуется цветом major-линий.
+    // Рамка bounded-сетки остаётся привязана к абсолютным координатам сетки.
     if (uIsBounded)
     {
         const float fBoundaryMinX = CreateLineMask(
@@ -293,31 +346,39 @@ void main()
         );
     }
 
-    const bool bTopSide = dDenom < 0.0;
+    const bool bTopSide =
+        dDenom < 0.0;
 
-    const vec4 vPlaneColor = bTopSide ? uPlaneColorTop : uPlaneColorBottom;
-    const vec4 vMinorColor = bTopSide ? uMinorColorTop : uMinorColorBottom;
-    const vec4 vMajorColor = bTopSide ? uMajorColorTop : uMajorColorBottom;
-    const vec4 vXAxisColor = bTopSide ? uXAxisColorTop : uXAxisColorBottom;
-    const vec4 vYAxisColor = bTopSide ? uYAxisColorTop : uYAxisColorBottom;
-    const vec4 vBoundaryColor = vMajorColor;
+    const vec4 vPlaneColor =
+        bTopSide ? uPlaneColorTop : uPlaneColorBottom;
+
+    const vec4 vMinorColor =
+        bTopSide ? uMinorColorTop : uMinorColorBottom;
+
+    const vec4 vMajorColor =
+        bTopSide ? uMajorColorTop : uMajorColorBottom;
+
+    const vec4 vXAxisColor =
+        bTopSide ? uXAxisColorTop : uXAxisColorBottom;
+
+    const vec4 vYAxisColor =
+        bTopSide ? uYAxisColorTop : uYAxisColorBottom;
+
+    const vec4 vBoundaryColor =
+        vMajorColor;
 
     const float fGridMask = max(
         max(fMinorMask, fMajorMask),
         max(max(fBoundaryMask, fXAxisMask), fYAxisMask)
     );
 
-    // Если нет линий, нет заливки и не включён debug, фрагмент не нужен.
     if (fGridMask <= 0.001 && !uDrawPlane && !uDebugDepthZones)
     {
         discard;
     }
 
-    // Если заливка включена, начинаем цвет с цвета плоскости.
-    // Если выключена — рисуем только линии/точки/оси/рамку.
-    vec4 vColor = uDrawPlane
-        ? vPlaneColor
-        : vec4(0.0);
+    vec4 vColor =
+        uDrawPlane ? vPlaneColor : vec4(0.0);
 
     vColor = mix(vColor, vMinorColor, fMinorMask);
     vColor = mix(vColor, vMajorColor, fMajorMask);

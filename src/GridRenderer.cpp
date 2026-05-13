@@ -27,14 +27,16 @@ namespace
         glm::dvec2& vScreenPosition
     )
     {
-        const glm::dvec4 vClip = mViewProj * glm::dvec4(vWorldPosition, 1.0);
+        const glm::dvec4 vClip =
+            mViewProj * glm::dvec4(vWorldPosition, 1.0);
 
         if (std::abs(vClip.w) < 1e-12)
         {
             return false;
         }
 
-        const glm::dvec3 vNdc = glm::dvec3(vClip) / vClip.w;
+        const glm::dvec3 vNdc =
+            glm::dvec3(vClip) / vClip.w;
 
         vScreenPosition = glm::dvec2(
             (vNdc.x * 0.5 + 0.5) * vViewportSize.x,
@@ -107,6 +109,89 @@ namespace
 
         return dNiceMantissa * dBase;
     }
+
+    bool UnprojectNdcToEye(
+        const glm::dmat4& mInvProjection,
+        double dNdcX,
+        double dNdcY,
+        double dNdcZ,
+        glm::dvec3& vEyePoint
+    )
+    {
+        glm::dvec4 vEye =
+            mInvProjection * glm::dvec4(dNdcX, dNdcY, dNdcZ, 1.0);
+
+        if (std::abs(vEye.w) < 1e-12)
+        {
+            return false;
+        }
+
+        vEye /= vEye.w;
+        vEyePoint = glm::dvec3(vEye);
+
+        return true;
+    }
+
+    bool TryIntersectCenterRayWithGridPlane(
+        const glm::dmat4& mInvProjection,
+        const glm::dvec3& vGridOriginEye,
+        const glm::dvec3& vGridAxisXEye,
+        const glm::dvec3& vGridAxisYEye,
+        const glm::dvec3& vGridNormalEye,
+        double& dGridX,
+        double& dGridY
+    )
+    {
+        glm::dvec3 vNearEye(0.0);
+        glm::dvec3 vFarEye(0.0);
+
+        const bool bNearOk = UnprojectNdcToEye(
+            mInvProjection,
+            0.0,
+            0.0,
+            -1.0,
+            vNearEye
+        );
+
+        const bool bFarOk = UnprojectNdcToEye(
+            mInvProjection,
+            0.0,
+            0.0,
+            1.0,
+            vFarEye
+        );
+
+        if (!bNearOk || !bFarOk)
+        {
+            return false;
+        }
+
+        const glm::dvec3 vRayOriginEye = vNearEye;
+        const glm::dvec3 vRayDirectionEye =
+            SafeNormalize(vFarEye - vNearEye, glm::dvec3(0.0, 0.0, -1.0));
+
+        const double dDenom =
+            glm::dot(vRayDirectionEye, vGridNormalEye);
+
+        if (std::abs(dDenom) < 1e-12)
+        {
+            return false;
+        }
+
+        const double dT =
+            glm::dot(vGridOriginEye - vRayOriginEye, vGridNormalEye) / dDenom;
+
+        const glm::dvec3 vGridPointEye =
+            vRayOriginEye + vRayDirectionEye * dT;
+
+        const glm::dvec3 vGridPointFromOriginEye =
+            vGridPointEye - vGridOriginEye;
+
+        dGridX = glm::dot(vGridPointFromOriginEye, vGridAxisXEye);
+        dGridY = glm::dot(vGridPointFromOriginEye, vGridAxisYEye);
+
+        return true;
+    }
 }
 
 CGridRenderer::CGridRenderer()
@@ -128,8 +213,6 @@ CGridRenderer::CGridRenderer()
     m_sStyle.dSafeDepthEpsilon = 0.000001;
 
     m_sStyle.bDebugDepthZones = false;
-
-    // ѕо умолчанию плоскость сетки слегка подкрашена.
     m_sStyle.bDrawPlane = true;
 
     m_sStyle.bIsBounded = false;
@@ -145,8 +228,7 @@ CGridRenderer::CGridRenderer()
     m_sStyle.bShowMajorGrid = true;
     m_sStyle.bShowAxes = true;
 
-    // ÷вета верхней стороны сетки.
-    // ѕодобраны под тЄмный CAD-like фон.
+    // ÷вета верхней стороны сетки под тЄмный CAD-like фон.
     m_sStyle.vPlaneColorTop = glm::vec4(0.115f, 0.135f, 0.160f, 0.22f);
     m_sStyle.vMinorColorTop = glm::vec4(0.250f, 0.285f, 0.325f, 0.22f);
     m_sStyle.vMajorColorTop = glm::vec4(0.390f, 0.430f, 0.480f, 0.62f);
@@ -304,7 +386,6 @@ void CGridRenderer::Render(
     shaderProgram.SetUniformMat4d("uInvProjection", sFrameData.mInvProjection);
     shaderProgram.SetUniformVec2d("uViewportSize", sFrameData.vViewportSize);
 
-    // ѕараметры сетки переводим из world-space в eye-space на CPU.
     const glm::dvec3 vOriginEye = glm::dvec3(
         sFrameData.mView * glm::dvec4(m_sGeometry.vOrigin, 1.0)
     );
@@ -324,10 +405,57 @@ void CGridRenderer::Render(
         glm::dvec3(0.0, 0.0, 1.0)
     );
 
+    const int nMajorLineFrequency =
+        std::max(m_sStyle.nMajorLineFrequency, 1);
+
+    const double dMajorStep =
+        m_sStyle.dMinorStep * static_cast<double>(nMajorLineFrequency);
+
+    double dCenterGridX = 0.0;
+    double dCenterGridY = 0.0;
+
+    const bool bHasCenterIntersection =
+        TryIntersectCenterRayWithGridPlane(
+            sFrameData.mInvProjection,
+            vOriginEye,
+            vAxisXEye,
+            vAxisYEye,
+            vNormalEye,
+            dCenterGridX,
+            dCenterGridY
+        );
+
+    double dAnchorGridX = 0.0;
+    double dAnchorGridY = 0.0;
+
+    if (bHasCenterIntersection && dMajorStep > 0.0)
+    {
+        // Anchor прив€зываетс€ к major step.
+        //
+        // Ѕлагодар€ этому:
+        // - minor-линии остаютс€ согласованы с абсолютной сеткой;
+        // - major-линии не сдвигаютс€;
+        // - shader строит pattern около видимой области, а не от огромных координат.
+        dAnchorGridX =
+            std::floor(dCenterGridX / dMajorStep) * dMajorStep;
+
+        dAnchorGridY =
+            std::floor(dCenterGridY / dMajorStep) * dMajorStep;
+    }
+
+    const glm::dvec3 vPatternOriginEye =
+        vOriginEye +
+        vAxisXEye * dAnchorGridX +
+        vAxisYEye * dAnchorGridY;
+
     shaderProgram.SetUniformVec3d("uGridOriginEye", vOriginEye);
     shaderProgram.SetUniformVec3d("uGridAxisXEye", vAxisXEye);
     shaderProgram.SetUniformVec3d("uGridAxisYEye", vAxisYEye);
     shaderProgram.SetUniformVec3d("uGridNormalEye", vNormalEye);
+
+    // Ёта точка €вл€етс€ локальным anchor дл€ построени€ маски линий.
+    // ¬ shader рассто€ни€ до линий считаютс€ относительно неЄ.
+    shaderProgram.SetUniformVec3d("uGridPatternOriginEye", vPatternOriginEye);
 
     shaderProgram.SetUniform1d("uMinViewNormalDot", m_sStyle.dMinViewNormalDot);
     shaderProgram.SetUniform1d("uSafeDepthEpsilon", m_sStyle.dSafeDepthEpsilon);
@@ -343,12 +471,6 @@ void CGridRenderer::Render(
     shaderProgram.SetUniform1i("uShowMinorGrid", m_sStyle.bShowMinorGrid ? 1 : 0);
     shaderProgram.SetUniform1i("uShowMajorGrid", m_sStyle.bShowMajorGrid ? 1 : 0);
     shaderProgram.SetUniform1i("uShowAxes", m_sStyle.bShowAxes ? 1 : 0);
-
-    const int nMajorLineFrequency =
-        std::max(m_sStyle.nMajorLineFrequency, 1);
-
-    const double dMajorStep =
-        m_sStyle.dMinorStep * static_cast<double>(nMajorLineFrequency);
 
     shaderProgram.SetUniform1d("uMinorStep", m_sStyle.dMinorStep);
     shaderProgram.SetUniform1d("uMajorStep", dMajorStep);
