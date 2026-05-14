@@ -55,8 +55,11 @@ struct SGridFrameData
 // Настройки внешнего вида сетки.
 struct SGridStyle
 {
-    // Малый шаг сетки в локальных единицах сетки.
-    double dMinorStep;
+    // Малый шаг сетки по локальной оси X.
+    double dMinorStepX;
+
+    // Малый шаг сетки по локальной оси Y.
+    double dMinorStepY;
 
     // Количество малых шагов в одном большом шаге.
     int nMajorLineFrequency;

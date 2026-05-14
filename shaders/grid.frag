@@ -30,8 +30,8 @@ uniform bool uShowMinorGrid;
 uniform bool uShowMajorGrid;
 uniform bool uShowAxes;
 
-uniform double uMinorStep;
-uniform double uMajorStep;
+uniform dvec2 uMinorStep;
+uniform dvec2 uMajorStep;
 
 uniform float uMinorThickness;
 uniform float uMajorThickness;
@@ -191,16 +191,16 @@ void main()
         dot(vGridPointFromPatternOriginEye, uGridAxisYEye);
 
     const double dMinorDistanceX =
-        DistanceToGridLine(dPatternX, uMinorStep);
+        DistanceToGridLine(dPatternX, uMinorStep.x);
 
     const double dMinorDistanceY =
-        DistanceToGridLine(dPatternY, uMinorStep);
+        DistanceToGridLine(dPatternY, uMinorStep.y);
 
     const double dMajorDistanceX =
-        DistanceToGridLine(dPatternX, uMajorStep);
+        DistanceToGridLine(dPatternX, uMajorStep.x);
 
     const double dMajorDistanceY =
-        DistanceToGridLine(dPatternY, uMajorStep);
+        DistanceToGridLine(dPatternY, uMajorStep.y);
 
     // fwidth тоже считаем от локальных pattern-координат, а не от больших
     // абсолютных gridX/gridY.
