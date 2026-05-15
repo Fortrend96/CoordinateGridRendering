@@ -96,6 +96,22 @@ private:
     // Сбрасывает камеру в начальный вид сверху.
     void ResetCameraToDefaultView();
 
+
+    // Включает/выключает adaptive grid.
+    void ToggleAdaptiveGrid();
+
+    // Ручное изменение шага сетки.
+    // При ручном изменении adaptive grid автоматически выключается.
+    void MultiplyGridStepX(double dMultiplier);
+    void MultiplyGridStepY(double dMultiplier);
+
+    // Меняет частоту крупных линий.
+    void ChangeMajorLineFrequency(int nDelta);
+
+    // Печатает текущие параметры шага сетки.
+    void PrintGridSpacingState() const;
+
+
     // Печатает список доступного управления.
     void PrintControls() const;
 
@@ -169,8 +185,16 @@ private:
     bool m_bWasMPressed;
     bool m_bWasFPressed;
     bool m_bWasGPressed;
+    bool m_bWasAPressed;
     bool m_bWasOPressed;
     bool m_bWasXPressed;
+
+    bool m_bWasLeftBracketPressed;
+    bool m_bWasRightBracketPressed;
+    bool m_bWasSemicolonPressed;
+    bool m_bWasApostrophePressed;
+    bool m_bWasCommaPressed;
+    bool m_bWasPeriodPressed;
 
     // Показывать ли тестовые модельные объекты.
     bool m_bShowDemoObjects;

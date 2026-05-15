@@ -25,8 +25,15 @@ CApplication::CApplication()
     , m_bWasMPressed(false)
     , m_bWasFPressed(false)
     , m_bWasGPressed(false)
+    , m_bWasAPressed(false)
     , m_bWasOPressed(false)
     , m_bWasXPressed(false)
+    , m_bWasLeftBracketPressed(false)
+    , m_bWasRightBracketPressed(false)
+    , m_bWasSemicolonPressed(false)
+    , m_bWasApostrophePressed(false)
+    , m_bWasCommaPressed(false)
+    , m_bWasPeriodPressed(false)
     , m_bShowDemoObjects(true)
     , m_bGridXrayMode(false)
 {
@@ -261,6 +268,76 @@ void CApplication::ProcessInput()
     }
 
     m_bWasXPressed = bIsXPressed;
+
+    const bool bIsAPressed =
+        glfwGetKey(m_pWindow, GLFW_KEY_A) == GLFW_PRESS;
+
+    if (bIsAPressed && !m_bWasAPressed)
+    {
+        ToggleAdaptiveGrid();
+    }
+
+    m_bWasAPressed = bIsAPressed;
+
+    const bool bIsLeftBracketPressed =
+        glfwGetKey(m_pWindow, GLFW_KEY_LEFT_BRACKET) == GLFW_PRESS;
+
+    if (bIsLeftBracketPressed && !m_bWasLeftBracketPressed)
+    {
+        MultiplyGridStepX(0.5);
+    }
+
+    m_bWasLeftBracketPressed = bIsLeftBracketPressed;
+
+    const bool bIsRightBracketPressed =
+        glfwGetKey(m_pWindow, GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS;
+
+    if (bIsRightBracketPressed && !m_bWasRightBracketPressed)
+    {
+        MultiplyGridStepX(2.0);
+    }
+
+    m_bWasRightBracketPressed = bIsRightBracketPressed;
+
+    const bool bIsSemicolonPressed =
+        glfwGetKey(m_pWindow, GLFW_KEY_SEMICOLON) == GLFW_PRESS;
+
+    if (bIsSemicolonPressed && !m_bWasSemicolonPressed)
+    {
+        MultiplyGridStepY(0.5);
+    }
+
+    m_bWasSemicolonPressed = bIsSemicolonPressed;
+
+    const bool bIsApostrophePressed =
+        glfwGetKey(m_pWindow, GLFW_KEY_APOSTROPHE) == GLFW_PRESS;
+
+    if (bIsApostrophePressed && !m_bWasApostrophePressed)
+    {
+        MultiplyGridStepY(2.0);
+    }
+
+    m_bWasApostrophePressed = bIsApostrophePressed;
+
+    const bool bIsCommaPressed =
+        glfwGetKey(m_pWindow, GLFW_KEY_COMMA) == GLFW_PRESS;
+
+    if (bIsCommaPressed && !m_bWasCommaPressed)
+    {
+        ChangeMajorLineFrequency(-1);
+    }
+
+    m_bWasCommaPressed = bIsCommaPressed;
+
+    const bool bIsPeriodPressed =
+        glfwGetKey(m_pWindow, GLFW_KEY_PERIOD) == GLFW_PRESS;
+
+    if (bIsPeriodPressed && !m_bWasPeriodPressed)
+    {
+        ChangeMajorLineFrequency(1);
+    }
+
+    m_bWasPeriodPressed = bIsPeriodPressed;
 }
 
 void CApplication::RenderFrame()
@@ -603,6 +680,106 @@ void CApplication::ResetCameraToDefaultView()
     );
 }
 
+void CApplication::ToggleAdaptiveGrid()
+{
+    m_sGridStyle.bUseAdaptiveStep = !m_sGridStyle.bUseAdaptiveStep;
+    m_gridRenderer.SetStyle(m_sGridStyle);
+
+    std::cout << "Adaptive grid: "
+        << (m_sGridStyle.bUseAdaptiveStep ? "enabled" : "disabled")
+        << '\n';
+
+    PrintGridSpacingState();
+}
+
+void CApplication::MultiplyGridStepX(double dMultiplier)
+{
+    constexpr double dMinGridStep = 0.000001;
+    constexpr double dMaxGridStep = 1000000000.0;
+
+    // Ручное изменение шага отключает adaptive grid,
+    // иначе adaptive step перезапишет значение на следующем кадре.
+    m_sGridStyle.bUseAdaptiveStep = false;
+
+    m_sGridStyle.dMinorStepX = std::clamp(
+        m_sGridStyle.dMinorStepX * dMultiplier,
+        dMinGridStep,
+        dMaxGridStep
+    );
+
+    m_gridRenderer.SetStyle(m_sGridStyle);
+
+    PrintGridSpacingState();
+}
+
+void CApplication::MultiplyGridStepY(double dMultiplier)
+{
+    constexpr double dMinGridStep = 0.000001;
+    constexpr double dMaxGridStep = 1000000000.0;
+
+    // Ручное изменение шага отключает adaptive grid.
+    m_sGridStyle.bUseAdaptiveStep = false;
+
+    m_sGridStyle.dMinorStepY = std::clamp(
+        m_sGridStyle.dMinorStepY * dMultiplier,
+        dMinGridStep,
+        dMaxGridStep
+    );
+
+    m_gridRenderer.SetStyle(m_sGridStyle);
+
+    PrintGridSpacingState();
+}
+
+void CApplication::ChangeMajorLineFrequency(int nDelta)
+{
+    constexpr int nMinFrequency = 1;
+    constexpr int nMaxFrequency = 1000;
+
+    // Частота major-линий тоже относится к ручным параметрам сетки.
+    m_sGridStyle.bUseAdaptiveStep = false;
+
+    m_sGridStyle.nMajorLineFrequency = std::clamp(
+        m_sGridStyle.nMajorLineFrequency + nDelta,
+        nMinFrequency,
+        nMaxFrequency
+    );
+
+    m_gridRenderer.SetStyle(m_sGridStyle);
+
+    PrintGridSpacingState();
+}
+
+void CApplication::PrintGridSpacingState() const
+{
+    const int nMajorLineFrequency =
+        std::max(m_sGridStyle.nMajorLineFrequency, 1);
+
+    const double dMajorStepX =
+        m_sGridStyle.dMinorStepX * static_cast<double>(nMajorLineFrequency);
+
+    const double dMajorStepY =
+        m_sGridStyle.dMinorStepY * static_cast<double>(nMajorLineFrequency);
+
+    std::cout << "Adaptive grid: "
+        << (m_sGridStyle.bUseAdaptiveStep ? "enabled" : "disabled")
+        << '\n';
+
+    std::cout << "Grid X spacing: "
+        << m_sGridStyle.dMinorStepX
+        << ", Grid Y spacing: "
+        << m_sGridStyle.dMinorStepY
+        << ", Major line every: "
+        << nMajorLineFrequency
+        << '\n';
+
+    std::cout << "Major X spacing: "
+        << dMajorStepX
+        << ", Major Y spacing: "
+        << dMajorStepY
+        << '\n';
+}
+
 void CApplication::PrintControls() const
 {
     std::cout << '\n';
@@ -617,6 +794,10 @@ void CApplication::PrintControls() const
     std::cout << "  M                                  : toggle lines/dots mode\n";
     std::cout << "  F                                  : toggle grid plane fill\n";
     std::cout << "  G                                  : toggle depth zones debug view\n";
+    std::cout << "  A                                  : toggle adaptive grid\n";
+    std::cout << "  [ / ]                              : decrease / increase grid X spacing\n";
+    std::cout << "  ; / '                              : decrease / increase grid Y spacing\n";
+    std::cout << "  , / .                              : decrease / increase major line frequency\n";
     std::cout << "  O                                  : toggle demo objects\n";
     std::cout << "  X                                  : toggle grid x-ray mode\n";
     std::cout << "  Esc                                : exit\n";
@@ -633,6 +814,23 @@ void CApplication::PrintInitialState() const
 
     std::cout << "Grid mode: "
         << (m_sGridStyle.bDrawDots ? "dots" : "lines")
+        << '\n';
+
+
+    std::cout << "Adaptive grid: "
+        << (m_sGridStyle.bUseAdaptiveStep ? "enabled" : "disabled")
+        << '\n';
+
+    std::cout << "Grid X spacing: "
+        << m_sGridStyle.dMinorStepX
+        << '\n';
+
+    std::cout << "Grid Y spacing: "
+        << m_sGridStyle.dMinorStepY
+        << '\n';
+
+    std::cout << "Major line every: "
+        << m_sGridStyle.nMajorLineFrequency
         << '\n';
 
     std::cout << "Grid plane fill: "
