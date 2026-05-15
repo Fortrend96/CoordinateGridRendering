@@ -102,6 +102,29 @@ float CreateDotMask(
     );
 }
 
+// Функция смешивания
+vec4 BlendOverGridPlane(
+    vec4 vBaseColor,
+    vec4 vLineColor,
+    float fMask
+)
+{
+    float fAlpha = clamp(fMask, 0.0, 1.0);
+
+    vec3 vRgb = mix(
+        vBaseColor.rgb,
+        vLineColor.rgb,
+        fAlpha
+    );
+
+    float fOutAlpha = max(
+        vBaseColor.a,
+        vLineColor.a * fAlpha
+    );
+
+    return vec4(vRgb, fOutAlpha);
+}
+
 void main()
 {
     // Восстанавливаем NDC текущего пикселя из gl_FragCoord.
@@ -380,11 +403,11 @@ void main()
     vec4 vColor =
         uDrawPlane ? vPlaneColor : vec4(0.0);
 
-    vColor = mix(vColor, vMinorColor, fMinorMask);
-    vColor = mix(vColor, vMajorColor, fMajorMask);
-    vColor = mix(vColor, vBoundaryColor, fBoundaryMask);
-    vColor = mix(vColor, vXAxisColor, fXAxisMask);
-    vColor = mix(vColor, vYAxisColor, fYAxisMask);
+    vColor = BlendOverGridPlane(vColor, vMinorColor, fMinorMask);
+    vColor = BlendOverGridPlane(vColor, vMajorColor, fMajorMask);
+    vColor = BlendOverGridPlane(vColor, vBoundaryColor, fBoundaryMask);
+    vColor = BlendOverGridPlane(vColor, vXAxisColor, fXAxisMask);
+    vColor = BlendOverGridPlane(vColor, vYAxisColor, fYAxisMask);
 
     if (vColor.a <= 0.001 && !uDebugDepthZones)
     {
