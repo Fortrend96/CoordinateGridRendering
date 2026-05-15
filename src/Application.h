@@ -3,7 +3,6 @@
 #include "AxisMarkerRenderer.h"
 #include "DemoSceneRenderer.h"
 #include "GridRenderer.h"
-#include "OrbitCamera.h"
 #include "ShaderProgram.h"
 
 #include <glad/glad.h>
@@ -12,6 +11,9 @@
 #include <glm/glm.hpp>
 
 #include <memory>
+
+
+class COrbitCamera;
 
 // Главный класс демо-приложения.
 //

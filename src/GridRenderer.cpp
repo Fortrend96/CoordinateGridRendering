@@ -381,7 +381,7 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
     const double dMajorStepPixelsY =
         dMajorStepY * dPixelsPerUnitY;
 
-    // —лишком плотную minor-сетку скрываем, чтобы уменьшить муар.
+    // —лишком плотную minor-сетку скрываем.
     m_sStyle.bShowMinorGrid =
         dMinorStepPixelsX >= 14.0 &&
         dMinorStepPixelsY >= 14.0;
@@ -474,7 +474,7 @@ void CGridRenderer::Render(
     shaderProgram.SetUniformVec3d("uGridAxisYEye", vAxisYEye);
     shaderProgram.SetUniformVec3d("uGridNormalEye", vNormalEye);
 
-    // Ёта точка €вл€етс€ локальным anchor дл€ построени€ маски линий.
+    // Ёта точка €вл€етс€ локальным "€корем" дл€ построени€ маски линий.
     // ¬ shader рассто€ни€ до линий считаютс€ относительно неЄ.
     shaderProgram.SetUniformVec3d("uGridPatternOriginEye", vPatternOriginEye);
 

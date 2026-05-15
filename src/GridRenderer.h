@@ -32,13 +32,10 @@ struct SGridFrameData
     glm::dmat4 mProjection;
 
     // Inverse projection matrix.
-    //
-    // ¬о fragment shader используетс€ дл€ восстановлени€ eye-space луча
-    // текущего пиксел€ из gl_FragCoord.
+    // ¬о fragment shader используетс€ дл€ восстановлени€ eye-space луча текущего пиксел€ из gl_FragCoord.
     glm::dmat4 mInvProjection;
 
     // Projection * View.
-    //
     // »спользуетс€ на CPU дл€ подбора adaptive step.
     glm::dmat4 mViewProj;
 

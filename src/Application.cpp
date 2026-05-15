@@ -8,6 +8,8 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "OrbitCamera.h"
+
 CApplication::CApplication()
     : m_pWindow(nullptr)
     , m_nInitialWindowWidth(1280)
@@ -18,7 +20,6 @@ CApplication::CApplication()
     , m_dDefaultCameraYawRadians(glm::radians(-90.0))
 
     // Почти вертикальный угол вместо ровных 90 градусов.
-    // Это помогает избежать вырождения базиса камеры.
     , m_dDefaultCameraPitchRadians(glm::radians(89.9))
 
     , m_nMsaaSamples(4)
@@ -464,13 +465,13 @@ void CApplication::RenderFrame()
         glDepthFunc(GL_LEQUAL);
     }
 
-    //// Для проверки аппаратного AA на сетке включаем sample shading,
-    //// чтобы shader мог выполняться на уровне sample'ов.
-    //if (m_bUseSampleShadingForGrid)
-    //{
-    //    glEnable(GL_SAMPLE_SHADING);
-    //    glMinSampleShading(1.0f);
-    //}
+    // Для проверки аппаратного AA на сетке включаем sample shading,
+    // чтобы shader мог выполняться на уровне sample'ов.
+    if (m_bUseSampleShadingForGrid)
+    {
+        glEnable(GL_SAMPLE_SHADING);
+        glMinSampleShading(1.0f);
+    }
 
     m_gridRenderer.Render(
         m_gridShaderProgram,
