@@ -178,8 +178,13 @@ private:
     double m_dDefaultCameraYawRadians;
     double m_dDefaultCameraPitchRadians;
 
+    // Количество sample'ов для MSAA.
+    int m_nMsaaSamples;
+
+    // Включать ли sample shading для процедурной сетки.
+    bool m_bUseSampleShadingForGrid;
+
     // Состояния клавиш на прошлом кадре.
-    //
     // Нужны, чтобы переключатели срабатывали один раз на нажатие.
     bool m_bWasBPressed;
     bool m_bWasMPressed;

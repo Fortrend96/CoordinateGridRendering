@@ -7,9 +7,6 @@
 #include <glm/glm.hpp>
 
 // Геометрия координатной сетки в world-space.
-//
-// Сетка задаётся не набором линий, а плоскостью:
-// origin + axisX * x + axisY * y.
 struct SGridGeometry
 {
     // Начало координат сетки.

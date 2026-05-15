@@ -21,6 +21,9 @@ CApplication::CApplication()
     // Это помогает избежать вырождения базиса камеры.
     , m_dDefaultCameraPitchRadians(glm::radians(89.9))
 
+    , m_nMsaaSamples(4)
+    , m_bUseSampleShadingForGrid(true)
+
     , m_bWasBPressed(false)
     , m_bWasMPressed(false)
     , m_bWasFPressed(false)
@@ -70,6 +73,9 @@ void CApplication::InitializeGlfw()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    // Включает аппаратный MSAA для обычной геометрии
+    glfwWindowHint(GLFW_SAMPLES, m_nMsaaSamples);
 }
 
 void CApplication::CreateWindow()
@@ -109,6 +115,23 @@ void CApplication::InitializeOpenGl()
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Включаем аппаратный multisampling.
+    glEnable(GL_MULTISAMPLE);
+
+    GLint nSampleBuffers = 0;
+    GLint nSamples = 0;
+
+    glGetIntegerv(GL_SAMPLE_BUFFERS, &nSampleBuffers);
+    glGetIntegerv(GL_SAMPLES, &nSamples);
+
+    std::cout << "MSAA sample buffers: " << nSampleBuffers << '\n';
+    std::cout << "MSAA samples: " << nSamples << '\n';
+
+    if (nSampleBuffers <= 0 || nSamples <= 1)
+    {
+        std::cout << "Warning: MSAA was requested but is not active\n";
+    }
 }
 
 void CApplication::LoadShaders()
@@ -441,10 +464,23 @@ void CApplication::RenderFrame()
         glDepthFunc(GL_LEQUAL);
     }
 
+    //// Для проверки аппаратного AA на сетке включаем sample shading,
+    //// чтобы shader мог выполняться на уровне sample'ов.
+    //if (m_bUseSampleShadingForGrid)
+    //{
+    //    glEnable(GL_SAMPLE_SHADING);
+    //    glMinSampleShading(1.0f);
+    //}
+
     m_gridRenderer.Render(
         m_gridShaderProgram,
         sFrameData
     );
+
+    if (m_bUseSampleShadingForGrid)
+    {
+        glDisable(GL_SAMPLE_SHADING);
+    }
 
     // Возвращаем depth-состояние после отрисовки сетки.
     glDepthMask(GL_TRUE);
