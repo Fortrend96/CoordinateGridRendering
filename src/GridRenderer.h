@@ -115,6 +115,14 @@ struct SGridStyle
     glm::vec4 vYAxisColorBottom;
 };
 
+
+// √отовые шаги сетки, рассчитанные на C++ стороне.
+struct SGridComputedSteps
+{
+    glm::dvec2 vMinorStep;
+    glm::dvec2 vMajorStep;
+};
+
 // –ендерер аналитической координатной сетки.
 //
 // —етка рисуетс€ fullscreen quad'ом.
@@ -159,6 +167,13 @@ public:
         const CShaderProgram& shaderProgram,
         const SGridFrameData& sFrameData
     ) const;
+
+private:
+    // ¬озвращает согласованные minor/major шаги.
+    //
+    // Major step не хранитс€ отдельно, а всегда вычисл€етс€ как:
+    // minorStep * majorLineFrequency.
+    SGridComputedSteps GetComputedSteps() const;
 
 private:
     // VAO дл€ fullscreen quad.

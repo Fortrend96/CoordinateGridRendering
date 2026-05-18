@@ -23,7 +23,7 @@ CApplication::CApplication()
     , m_dDefaultCameraPitchRadians(glm::radians(89.9))
 
     , m_nMsaaSamples(4)
-    , m_bUseSampleShadingForGrid(true)
+    , m_bUseSampleShadingForGrid(false)
 
     , m_bWasBPressed(false)
     , m_bWasMPressed(false)

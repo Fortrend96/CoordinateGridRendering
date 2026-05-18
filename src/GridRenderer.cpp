@@ -333,24 +333,16 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
         sFrameData.vViewportSize
     );
 
-    double dPixelsPerWorldUnit = 0.0;
-
-    if (dPixelsPerUnitX > 0.0 && dPixelsPerUnitY > 0.0)
-    {
-        dPixelsPerWorldUnit = std::min(dPixelsPerUnitX, dPixelsPerUnitY);
-    }
-    else
-    {
-        dPixelsPerWorldUnit = std::max(dPixelsPerUnitX, dPixelsPerUnitY);
-    }
-
-    if (!std::isfinite(dPixelsPerWorldUnit) || dPixelsPerWorldUnit <= 1e-9)
+    if (
+        !std::isfinite(dPixelsPerUnitX) ||
+        !std::isfinite(dPixelsPerUnitY) ||
+        dPixelsPerUnitX <= 1e-9 ||
+        dPixelsPerUnitY <= 1e-9
+        )
     {
         return;
     }
 
-    // Подбираем только minor step.
-    // Major step всегда вычисляется как minorStep * majorLineFrequency.
     const double dDesiredMinorStepX =
         m_sStyle.dTargetMinorStepPixels / dPixelsPerUnitX;
 
@@ -360,28 +352,21 @@ void CGridRenderer::UpdateAdaptiveStep(const SGridFrameData& sFrameData)
     m_sStyle.dMinorStepX = RoundUpToNiceStep(dDesiredMinorStepX);
     m_sStyle.dMinorStepY = RoundUpToNiceStep(dDesiredMinorStepY);
 
-    const int nMajorLineFrequency =
-        std::max(m_sStyle.nMajorLineFrequency, 1);
-
-    const double dMajorStepX =
-        m_sStyle.dMinorStepX * static_cast<double>(nMajorLineFrequency);
-
-    const double dMajorStepY =
-        m_sStyle.dMinorStepY * static_cast<double>(nMajorLineFrequency);
+    const SGridComputedSteps sSteps = GetComputedSteps();
 
     const double dMinorStepPixelsX =
-        m_sStyle.dMinorStepX * dPixelsPerUnitX;
+        sSteps.vMinorStep.x * dPixelsPerUnitX;
 
     const double dMinorStepPixelsY =
-        m_sStyle.dMinorStepY * dPixelsPerUnitY;
+        sSteps.vMinorStep.y * dPixelsPerUnitY;
 
     const double dMajorStepPixelsX =
-        dMajorStepX * dPixelsPerUnitX;
+        sSteps.vMajorStep.x * dPixelsPerUnitX;
 
     const double dMajorStepPixelsY =
-        dMajorStepY * dPixelsPerUnitY;
+        sSteps.vMajorStep.y * dPixelsPerUnitY;
 
-    // Слишком плотную minor-сетку скрываем.
+    // Слишком плотную minor-сетку скрываем, чтобы уменьшить муар.
     m_sStyle.bShowMinorGrid =
         dMinorStepPixelsX >= 14.0 &&
         dMinorStepPixelsY >= 14.0;
@@ -425,14 +410,7 @@ void CGridRenderer::Render(
         glm::dvec3(0.0, 0.0, 1.0)
     );
 
-    const int nMajorLineFrequency =
-        std::max(m_sStyle.nMajorLineFrequency, 1);
-
-    const double dMajorStepX =
-        m_sStyle.dMinorStepX * static_cast<double>(nMajorLineFrequency);
-
-    const double dMajorStepY =
-        m_sStyle.dMinorStepY * static_cast<double>(nMajorLineFrequency);
+    const SGridComputedSteps sSteps = GetComputedSteps();
 
     double dCenterGridX = 0.0;
     double dCenterGridY = 0.0;
@@ -453,15 +431,15 @@ void CGridRenderer::Render(
 
     if (
         bHasCenterIntersection &&
-        dMajorStepX > 0.0 &&
-        dMajorStepY > 0.0
+        sSteps.vMajorStep.x > 0.0 &&
+        sSteps.vMajorStep.y > 0.0
         )
     {
         dAnchorGridX =
-            std::floor(dCenterGridX / dMajorStepX) * dMajorStepX;
+            std::floor(dCenterGridX / sSteps.vMajorStep.x) * sSteps.vMajorStep.x;
 
         dAnchorGridY =
-            std::floor(dCenterGridY / dMajorStepY) * dMajorStepY;
+            std::floor(dCenterGridY / sSteps.vMajorStep.y) * sSteps.vMajorStep.y;
     }
 
     const glm::dvec3 vPatternOriginEye =
@@ -498,10 +476,8 @@ void CGridRenderer::Render(
         glm::dvec2(m_sStyle.dMinorStepX, m_sStyle.dMinorStepY)
     );
 
-    shaderProgram.SetUniformVec2d(
-        "uMajorStep",
-        glm::dvec2(dMajorStepX, dMajorStepY)
-    );
+    shaderProgram.SetUniformVec2d("uMinorStep", sSteps.vMinorStep);
+    shaderProgram.SetUniformVec2d("uMajorStep", sSteps.vMajorStep);
 
     shaderProgram.SetUniform1f("uMinorThickness", m_sStyle.fMinorThickness);
     shaderProgram.SetUniform1f("uMajorThickness", m_sStyle.fMajorThickness);
@@ -526,4 +502,32 @@ void CGridRenderer::Render(
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     glBindVertexArray(0);
+}
+
+SGridComputedSteps CGridRenderer::GetComputedSteps() const
+{
+    constexpr double dMinStep = 1e-9;
+
+    const int nMajorLineFrequency =
+        std::max(m_sStyle.nMajorLineFrequency, 1);
+
+    const double dMinorStepX =
+        std::max(m_sStyle.dMinorStepX, dMinStep);
+
+    const double dMinorStepY =
+        std::max(m_sStyle.dMinorStepY, dMinStep);
+
+    SGridComputedSteps sSteps;
+
+    sSteps.vMinorStep = glm::dvec2(
+        dMinorStepX,
+        dMinorStepY
+    );
+
+    sSteps.vMajorStep = glm::dvec2(
+        dMinorStepX * static_cast<double>(nMajorLineFrequency),
+        dMinorStepY * static_cast<double>(nMajorLineFrequency)
+    );
+
+    return sSteps;
 }
