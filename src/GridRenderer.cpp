@@ -210,6 +210,10 @@ CGridRenderer::CGridRenderer()
     m_sStyle.fMajorThickness = 1.05f;
     m_sStyle.fAxisThickness = 1.6f;
 
+    // –учное shader-сглаживание выключено.
+    // ќсновной способ сглаживани€ сейчас Ч аппаратный MSAA.
+    m_sStyle.fShaderAntialiasWidth = 0.0f;
+
     m_sStyle.dMinViewNormalDot = 0.005;
     m_sStyle.dSafeDepthEpsilon = 0.000001;
 
@@ -483,6 +487,8 @@ void CGridRenderer::Render(
     shaderProgram.SetUniform1f("uMajorThickness", m_sStyle.fMajorThickness);
     shaderProgram.SetUniform1f("uAxisThickness", m_sStyle.fAxisThickness);
     shaderProgram.SetUniform1f("uDotRadius", m_sStyle.fDotRadius);
+
+    shaderProgram.SetUniform1f("uShaderAntialiasWidth", m_sStyle.fShaderAntialiasWidth);
 
     shaderProgram.SetUniformVec4f("uPlaneColorTop", m_sStyle.vPlaneColorTop);
     shaderProgram.SetUniformVec4f("uMinorColorTop", m_sStyle.vMinorColorTop);

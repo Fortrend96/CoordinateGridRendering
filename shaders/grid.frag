@@ -39,6 +39,8 @@ uniform float uMajorThickness;
 uniform float uAxisThickness;
 uniform float uDotRadius;
 
+uniform float uShaderAntialiasWidth;
+
 uniform vec4 uPlaneColorTop;
 uniform vec4 uMinorColorTop;
 uniform vec4 uMajorColorTop;
@@ -65,6 +67,23 @@ double DistanceToGridLine(
 	return abs(dCoordinate - dNearestLine);
 }
 
+float CreateCoverageMask(
+	float fDistancePixels,
+	float fHalfThicknessPixels
+)
+{
+	if (uShaderAntialiasWidth <= 0.001)
+	{
+		return fDistancePixels <= fHalfThicknessPixels ? 1.0 : 0.0;
+	}
+
+	return 1.0 - smoothstep(
+		fHalfThicknessPixels,
+		fHalfThicknessPixels + uShaderAntialiasWidth,
+		fDistancePixels
+	);
+}
+
 float CreateLineMask(
 	double dDistanceToLine,
 	float fCoordinatePixelWidth,
@@ -77,12 +96,9 @@ float CreateLineMask(
 	const float fHalfThickness =
 		max(fThicknessPixels * 0.5, 0.35);
 
-	const float fAntiAliasWidth = 0.75;
-
-	return 1.0 - smoothstep(
-		fHalfThickness,
-		fHalfThickness + fAntiAliasWidth,
-		fDistancePixels
+	return CreateCoverageMask(
+		fDistancePixels,
+		fHalfThickness
 	);
 }
 
@@ -102,29 +118,16 @@ float CreateDotMask(
 	const float fDistance =
 		length(vDistancePixels);
 
+	if (uShaderAntialiasWidth <= 0.001)
+	{
+		return fDistance <= fRadiusPixels ? 1.0 : 0.0;
+	}
+
 	return 1.0 - smoothstep(
 		fRadiusPixels,
-		fRadiusPixels + 1.0,
+		fRadiusPixels + uShaderAntialiasWidth,
 		fDistance
 	);
-}
-
-vec4 BlendOverGridPlane(
-	vec4 vBaseColor,
-	vec4 vLineColor,
-	float fMask
-)
-{
-	const float fSafeMask =
-		clamp(fMask, 0.0, 1.0);
-
-	const vec3 vRgb =
-		mix(vBaseColor.rgb, vLineColor.rgb, fSafeMask);
-
-	const float fAlpha =
-		max(vBaseColor.a, vLineColor.a * fSafeMask);
-
-	return vec4(vRgb, fAlpha);
 }
 
 void main()
@@ -404,11 +407,11 @@ void main()
 	vec4 vColor =
 		uDrawPlane ? vPlaneColor : vec4(0.0);
 
-	vColor = BlendOverGridPlane(vColor, vMinorColor, fMinorMask);
-	vColor = BlendOverGridPlane(vColor, vMajorColor, fMajorMask);
-	vColor = BlendOverGridPlane(vColor, vBoundaryColor, fBoundaryMask);
-	vColor = BlendOverGridPlane(vColor, vXAxisColor, fXAxisMask);
-	vColor = BlendOverGridPlane(vColor, vYAxisColor, fYAxisMask);
+	vColor = mix(vColor, vMinorColor, fMinorMask);
+	vColor = mix(vColor, vMajorColor, fMajorMask);
+	vColor = mix(vColor, vBoundaryColor, fBoundaryMask);
+	vColor = mix(vColor, vXAxisColor, fXAxisMask);
+	vColor = mix(vColor, vYAxisColor, fYAxisMask);
 
 	if (vColor.a <= 0.001 && !uDebugDepthZones)
 	{

@@ -63,6 +63,9 @@ struct SGridStyle
     float fMajorThickness;
     float fAxisThickness;
 
+    // Ширина ручного shader-AA в пикселях.
+    float fShaderAntialiasWidth;
+
     // Минимальный угол между лучом камеры и плоскостью сетки.
     //
     // Если камера смотрит почти вдоль плоскости, сетку лучше скрыть,

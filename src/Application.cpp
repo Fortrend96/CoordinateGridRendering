@@ -22,7 +22,9 @@ CApplication::CApplication()
     // Почти вертикальный угол вместо ровных 90 градусов.
     , m_dDefaultCameraPitchRadians(glm::radians(89.9))
 
-    , m_nMsaaSamples(4)
+    , m_nRequestedMsaaSamples(64)
+    , m_nActualMsaaSamples(1)
+    , m_bIsMsaaActive(false)
     , m_bUseSampleShadingForGrid(false)
 
     , m_bWasBPressed(false)
@@ -75,8 +77,10 @@ void CApplication::InitializeGlfw()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Включает аппаратный MSAA для обычной геометрии
-    glfwWindowHint(GLFW_SAMPLES, m_nMsaaSamples);
+    // Запрашиваем multisampled framebuffer.
+    //
+    // Важно: GLFW_SAMPLES нужно задавать до glfwCreateWindow().
+    glfwWindowHint(GLFW_SAMPLES, m_nRequestedMsaaSamples);
 }
 
 void CApplication::CreateWindow()
@@ -126,10 +130,26 @@ void CApplication::InitializeOpenGl()
     glGetIntegerv(GL_SAMPLE_BUFFERS, &nSampleBuffers);
     glGetIntegerv(GL_SAMPLES, &nSamples);
 
-    std::cout << "MSAA sample buffers: " << nSampleBuffers << '\n';
-    std::cout << "MSAA samples: " << nSamples << '\n';
+    m_nActualMsaaSamples = static_cast<int>(nSamples);
+    m_bIsMsaaActive = nSampleBuffers > 0 && nSamples > 1;
 
-    if (nSampleBuffers <= 0 || nSamples <= 1)
+    std::cout << "Requested MSAA samples: "
+        << m_nRequestedMsaaSamples
+        << '\n';
+
+    std::cout << "MSAA sample buffers: "
+        << nSampleBuffers
+        << '\n';
+
+    std::cout << "MSAA samples: "
+        << nSamples
+        << '\n';
+
+    std::cout << "MSAA: "
+        << (m_bIsMsaaActive ? "enabled" : "disabled")
+        << '\n';
+
+    if (!m_bIsMsaaActive)
     {
         std::cout << "Warning: MSAA was requested but is not active\n";
     }

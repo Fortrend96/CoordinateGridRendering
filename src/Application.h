@@ -180,8 +180,14 @@ private:
     double m_dDefaultCameraYawRadians;
     double m_dDefaultCameraPitchRadians;
 
-    // Количество sample'ов для MSAA.
-    int m_nMsaaSamples;
+    // Запрашиваемое количество sample'ов для MSAA.
+    int m_nRequestedMsaaSamples;
+
+    // Фактическое количество sample'ов, которое выдал OpenGL context.
+    int m_nActualMsaaSamples;
+
+    // Активен ли MSAA по факту.
+    bool m_bIsMsaaActive;
 
     // Включать ли sample shading для процедурной сетки.
     bool m_bUseSampleShadingForGrid;
