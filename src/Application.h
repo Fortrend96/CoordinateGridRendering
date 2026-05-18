@@ -3,6 +3,7 @@
 #include "AxisMarkerRenderer.h"
 #include "DemoSceneRenderer.h"
 #include "GridRenderer.h"
+#include "OrbitCamera.h"
 #include "ShaderProgram.h"
 
 #include <glad/glad.h>
@@ -11,9 +12,6 @@
 #include <glm/glm.hpp>
 
 #include <memory>
-
-
-class COrbitCamera;
 
 // Главный класс демо-приложения.
 //
@@ -27,192 +25,226 @@ class COrbitCamera;
 class CApplication
 {
 public:
-    // Создаёт объект приложения с дефолтными параметрами.
-    CApplication();
+	// Создаёт объект приложения с дефолтными параметрами.
+	CApplication();
 
-    // Освобождает ресурсы приложения.
-    ~CApplication();
+	// Освобождает ресурсы приложения.
+	~CApplication();
 
-    // Копирование запрещено, потому что класс владеет GLFWwindow
-    // и OpenGL-ресурсами.
-    CApplication(const CApplication&) = delete;
-    CApplication& operator=(const CApplication&) = delete;
+	// Копирование запрещено, потому что класс владеет GLFWwindow
+	// и OpenGL-ресурсами.
+	CApplication(const CApplication&) = delete;
+	CApplication& operator=(const CApplication&) = delete;
 
-    // Запускает приложение.
-    int Run();
-
-private:
-    // Инициализирует GLFW.
-    void InitializeGlfw();
-
-    // Создаёт окно и OpenGL context.
-    void CreateWindow();
-
-    // Инициализирует GLAD и базовые OpenGL-состояния.
-    void InitializeOpenGl();
-
-    // Загружает shader-программы.
-    void LoadShaders();
-
-    // Инициализирует рендереры, камеру и начальную геометрию сетки.
-    void InitializeScene();
-
-    // Регистрирует GLFW callback-и.
-    void RegisterCallbacks();
-
-    // Главный цикл приложения.
-    void MainLoop();
-
-    // Обрабатывает клавиатурный ввод текущего кадра.
-    void ProcessInput();
-
-    // Рисует один кадр.
-    void RenderFrame();
-
-    // Освобождает GLFW/OpenGL-ресурсы.
-    void Shutdown();
+	// Запускает приложение.
+	int Run();
 
 private:
-    // Создаёт стандартную координатную плоскость XOY.
-    SGridGeometry CreateDefaultGridGeometry() const;
+	// Инициализирует GLFW.
+	void InitializeGlfw();
 
-    // Подбирает near/far planes под текущий zoom камеры.
-    void CalculateCameraClippingPlanes(
-        double& dNearPlane,
-        double& dFarPlane
-    ) const;
+	// Создаёт окно и OpenGL context.
+	void CreateWindow();
 
-    // Создаёт ортографическую projection matrix.
-    glm::dmat4 CreateProjectionMatrix(
-        double dAspect,
-        double dNearPlane,
-        double dFarPlane
-    ) const;
+	// Инициализирует GLAD и базовые OpenGL-состояния.
+	void InitializeOpenGl();
 
-    // Возвращает позицию курсора в NDC-координатах OpenGL.
-    glm::dvec2 GetCursorNdc() const;
+	// Загружает shader-программы.
+	void LoadShaders();
 
-    // Находит точку пересечения луча из курсора с плоскостью сетки.
-    bool TryGetCursorGridPoint(glm::dvec3& vResult) const;
+	// Инициализирует рендереры, камеру и начальную геометрию сетки.
+	void InitializeScene();
 
-    // Сбрасывает камеру в начальный вид сверху.
-    void ResetCameraToDefaultView();
+	// Регистрирует GLFW callback-и.
+	void RegisterCallbacks();
 
+	// Главный цикл приложения.
+	void MainLoop();
 
-    // Включает/выключает adaptive grid.
-    void ToggleAdaptiveGrid();
+	// Обрабатывает клавиатурный ввод текущего кадра.
+	void ProcessInput();
 
-    // Ручное изменение шага сетки.
-    // При ручном изменении adaptive grid автоматически выключается.
-    void MultiplyGridStepX(double dMultiplier);
-    void MultiplyGridStepY(double dMultiplier);
+	// Рисует один кадр.
+	void RenderFrame();
 
-    // Меняет частоту крупных линий.
-    void ChangeMajorLineFrequency(int nDelta);
-
-    // Печатает текущие параметры шага сетки.
-    void PrintGridSpacingState() const;
-
-
-    // Печатает список доступного управления.
-    void PrintControls() const;
-
-    // Печатает начальное состояние приложения.
-    void PrintInitialState() const;
+	// Освобождает GLFW/OpenGL-ресурсы.
+	void Shutdown();
 
 private:
-    // GLFW error callback.
-    static void GlfwErrorCallback(int nErrorCode, const char* pszDescription);
+	// Создаёт стандартную координатную плоскость XOY.
+	SGridGeometry CreateDefaultGridGeometry() const;
 
-    // GLFW mouse button callback.
-    static void MouseButtonCallback(
-        GLFWwindow* pWindow,
-        int nButton,
-        int nAction,
-        int nMods
-    );
+	// Подбирает near/far planes под текущий zoom камеры.
+	void CalculateCameraClippingPlanes(
+		double& dNearPlane,
+		double& dFarPlane
+	) const;
 
-    // GLFW cursor position callback.
-    static void CursorPositionCallback(
-        GLFWwindow* pWindow,
-        double dMouseX,
-        double dMouseY
-    );
+	// Создаёт ортографическую projection matrix.
+	glm::dmat4 CreateProjectionMatrix(
+		double dAspect,
+		double dNearPlane,
+		double dFarPlane
+	) const;
 
-    // GLFW scroll callback.
-    static void ScrollCallback(
-        GLFWwindow* pWindow,
-        double dOffsetX,
-        double dOffsetY
-    );
+	// Возвращает позицию курсора в NDC-координатах OpenGL.
+	glm::dvec2 GetCursorNdc() const;
+
+	// Находит точку пересечения луча из курсора с плоскостью сетки.
+	bool TryGetCursorGridPoint(glm::dvec3& vResult) const;
+
+	// Сбрасывает камеру в начальный вид сверху.
+	void ResetCameraToDefaultView();
+
+	// Включает/выключает adaptive grid.
+	void ToggleAdaptiveGrid();
+
+	// Уменьшает/увеличивает шаг сетки по X.
+	//
+	// При ручном изменении шага adaptive grid автоматически выключается.
+	void MultiplyGridStepX(double dMultiplier);
+
+	// Уменьшает/увеличивает шаг сетки по Y.
+	//
+	// При ручном изменении шага adaptive grid автоматически выключается.
+	void MultiplyGridStepY(double dMultiplier);
+
+	// Меняет частоту major-линий.
+	void ChangeMajorLineFrequency(int nDelta);
+
+	// Печатает текущие параметры шага сетки.
+	void PrintGridSpacingState() const;
+
+	// Печатает список доступного управления.
+	void PrintControls() const;
+
+	// Печатает начальное состояние приложения.
+	void PrintInitialState() const;
 
 private:
-    // Окно GLFW.
-    GLFWwindow* m_pWindow;
+	// GLFW error callback.
+	static void GlfwErrorCallback(
+		int nErrorCode,
+		const char* pszDescription
+	);
 
-    // Начальный размер окна.
-    int m_nInitialWindowWidth;
-    int m_nInitialWindowHeight;
+	// GLFW mouse button callback.
+	static void MouseButtonCallback(
+		GLFWwindow* pWindow,
+		int nButton,
+		int nAction,
+		int nMods
+	);
 
-    // Shader-программа координатной сетки.
-    CShaderProgram m_gridShaderProgram;
+	// GLFW cursor position callback.
+	static void CursorPositionCallback(
+		GLFWwindow* pWindow,
+		double dMouseX,
+		double dMouseY
+	);
 
-    // Shader-программа маркера начала координат.
-    CShaderProgram m_axisMarkerShaderProgram;
+	// GLFW scroll callback.
+	static void ScrollCallback(
+		GLFWwindow* pWindow,
+		double dOffsetX,
+		double dOffsetY
+	);
 
-    // Shader-программа тестовых модельных объектов.
-    CShaderProgram m_sceneObjectShaderProgram;
+private:
+	// Окно GLFW.
+	GLFWwindow* m_pWindow;
 
-    // Рендереры сцены.
-    CGridRenderer m_gridRenderer;
-    CAxisMarkerRenderer m_axisMarkerRenderer;
-    CDemoSceneRenderer m_demoSceneRenderer;
+	// Начальный размер окна.
+	int m_nInitialWindowWidth;
+	int m_nInitialWindowHeight;
 
-    // Текущие параметры сетки.
-    SGridStyle m_sGridStyle;
-    SGridGeometry m_sGridGeometry;
+	// Shader-программа координатной сетки.
+	CShaderProgram m_gridShaderProgram;
 
-    // Orbit-камера.
-    std::unique_ptr<COrbitCamera> m_pCamera;
+	// Shader-программа маркера начала координат.
+	CShaderProgram m_axisMarkerShaderProgram;
 
-    // Начальные параметры камеры.
-    double m_dDefaultCameraDistance;
-    double m_dDefaultCameraYawRadians;
-    double m_dDefaultCameraPitchRadians;
+	// Shader-программа тестовых модельных объектов.
+	CShaderProgram m_sceneObjectShaderProgram;
 
-    // Запрашиваемое количество sample'ов для MSAA.
-    int m_nRequestedMsaaSamples;
+	// Рендерер аналитической координатной сетки.
+	CGridRenderer m_gridRenderer;
 
-    // Фактическое количество sample'ов, которое выдал OpenGL context.
-    int m_nActualMsaaSamples;
+	// Рендерер маркера начала координат.
+	CAxisMarkerRenderer m_axisMarkerRenderer;
 
-    // Активен ли MSAA по факту.
-    bool m_bIsMsaaActive;
+	// Рендерер тестовых объектов сцены.
+	CDemoSceneRenderer m_demoSceneRenderer;
 
-    // Включать ли sample shading для процедурной сетки.
-    bool m_bUseSampleShadingForGrid;
+	// Текущий стиль сетки.
+	SGridStyle m_sGridStyle;
 
-    // Состояния клавиш на прошлом кадре.
-    // Нужны, чтобы переключатели срабатывали один раз на нажатие.
-    bool m_bWasBPressed;
-    bool m_bWasMPressed;
-    bool m_bWasFPressed;
-    bool m_bWasGPressed;
-    bool m_bWasAPressed;
-    bool m_bWasOPressed;
-    bool m_bWasXPressed;
+	// Текущая геометрия сетки.
+	SGridGeometry m_sGridGeometry;
 
-    bool m_bWasLeftBracketPressed;
-    bool m_bWasRightBracketPressed;
-    bool m_bWasSemicolonPressed;
-    bool m_bWasApostrophePressed;
-    bool m_bWasCommaPressed;
-    bool m_bWasPeriodPressed;
+	// Orbit-камера.
+	std::unique_ptr<COrbitCamera> m_pCamera;
 
-    // Показывать ли тестовые модельные объекты.
-    bool m_bShowDemoObjects;
+	// Начальная дистанция камеры.
+	double m_dDefaultCameraDistance;
 
-    // false — сетка участвует в depth test.
-    // true  — сетка рисуется поверх объектов.
-    bool m_bGridXrayMode;
+	// Начальный yaw камеры.
+	//
+	// Подобран так, чтобы при запуске:
+	// - ось X была направлена вправо;
+	// - ось Y была направлена вверх.
+	double m_dDefaultCameraYawRadians;
+
+	// Начальный pitch камеры для вида сверху.
+	//
+	// Используется почти вертикальный угол, чтобы не получить вырождение
+	// базиса камеры.
+	double m_dDefaultCameraPitchRadians;
+
+	// Запрашиваемое количество sample'ов для MSAA.
+	int m_nRequestedMsaaSamples;
+
+	// Фактическое количество sample'ов, которое выдал OpenGL context.
+	int m_nActualMsaaSamples;
+
+	// Активен ли MSAA по факту.
+	bool m_bIsMsaaActive;
+
+	// Включать ли sample shading для процедурной сетки.
+	//
+	// По умолчанию выключено, чтобы сначала проверять обычный аппаратный MSAA.
+	bool m_bUseSampleShadingForGrid;
+
+	// Состояния клавиш на прошлом кадре.
+	//
+	// Нужны, чтобы переключатели срабатывали один раз на нажатие,
+	// а не каждый кадр при удержании клавиши.
+	bool m_bWasBPressed;
+	bool m_bWasMPressed;
+	bool m_bWasFPressed;
+	bool m_bWasGPressed;
+	bool m_bWasAPressed;
+	bool m_bWasOPressed;
+	bool m_bWasXPressed;
+
+	bool m_bWasLeftBracketPressed;
+	bool m_bWasRightBracketPressed;
+	bool m_bWasSemicolonPressed;
+	bool m_bWasApostrophePressed;
+	bool m_bWasCommaPressed;
+	bool m_bWasPeriodPressed;
+
+	// Показывать ли тестовые модельные объекты.
+	//
+	// Эти объекты нужны для проверки взаимодействия сетки с depth buffer.
+	bool m_bShowDemoObjects;
+
+	// Режим отображения сетки поверх объектов.
+	//
+	// false:
+	//   сетка участвует в depth test и корректно перекрывается объектами.
+	//
+	// true:
+	//   depth test для сетки отключается, поэтому сетка видна поверх фигур.
+	bool m_bGridXrayMode;
 };

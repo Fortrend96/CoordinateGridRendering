@@ -37,7 +37,7 @@ public:
     // Рисует все объекты сцены.
     void Render(
         const CShaderProgram& shaderProgram,
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry
     ) const;
 

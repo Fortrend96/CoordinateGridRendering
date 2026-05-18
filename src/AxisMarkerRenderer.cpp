@@ -312,7 +312,7 @@ namespace
 
     // Возвращает экранную длину проекции оси маркера.
     double GetAxisScreenLength(
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry,
         EAxisMarkerAxis eAxis
     )
@@ -352,7 +352,7 @@ namespace
     // Проверяет, похож ли текущий orthographic view на один из классических
     // осевых CAD-видов: Top/Bottom, Front/Back, Left/Right.
     bool IsPrincipalOrthographicView(
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry
     )
     {
@@ -400,7 +400,7 @@ namespace
     // Определяет, какую ось скрыть в orthographic-режиме,
     // по экранной длине её проекции.
     EAxisMarkerAxis ChooseHiddenAxisForOrthographicView(
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry
     )
     {
@@ -437,7 +437,7 @@ namespace
 
     // Проецирует ось маркера в screen-space и возвращает экранное направление.
     bool TryGetAxisScreenDirection(
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry,
         const glm::dvec3& vAxisDirection,
         glm::dvec2& vScreenDirection
@@ -482,7 +482,7 @@ namespace
     // Строит одну экранно-стабильную ось для orthographic-маркера.
     void AppendOrthographicAxis(
         std::vector<SAxisMarkerVertex>& arrVertices,
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry,
         const SAxisMarkerStyle& sStyle,
         EAxisMarkerAxis eAxis,
@@ -666,7 +666,7 @@ const SAxisMarkerStyle& CAxisMarkerRenderer::GetStyle() const
 
 void CAxisMarkerRenderer::Render(
     const CShaderProgram& shaderProgram,
-    const SGridFrameData& sFrameData,
+    const SViewData& sFrameData,
     const SGridGeometry& sGridGeometry
 ) const
 {
@@ -697,7 +697,7 @@ void CAxisMarkerRenderer::Render(
 
 void CAxisMarkerRenderer::RenderPerspectiveMarker(
     const CShaderProgram& shaderProgram,
-    const SGridFrameData& sFrameData,
+    const SViewData& sFrameData,
     const SGridGeometry& sGridGeometry
 ) const
 {
@@ -834,7 +834,7 @@ void CAxisMarkerRenderer::RenderPerspectiveMarker(
 
 void CAxisMarkerRenderer::RenderOrthographicMarker(
     const CShaderProgram& shaderProgram,
-    const SGridFrameData& sFrameData,
+    const SViewData& sFrameData,
     const SGridGeometry& sGridGeometry
 ) const
 {
@@ -948,7 +948,7 @@ void CAxisMarkerRenderer::RenderOrthographicMarker(
 
 void CAxisMarkerRenderer::UploadAndDrawLines(
     const CShaderProgram& shaderProgram,
-    const SGridFrameData& sFrameData,
+    const SViewData& sFrameData,
     const SGridGeometry& sGridGeometry,
     const void* pVertexData,
     GLsizeiptr nVertexDataSize,

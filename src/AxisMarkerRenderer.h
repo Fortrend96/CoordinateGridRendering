@@ -76,7 +76,7 @@ public:
     // Рисует маркер начала системы координат.
     void Render(
         const CShaderProgram& shaderProgram,
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry
     ) const;
 
@@ -84,21 +84,21 @@ private:
     // Рисует perspective-вариант маркера.
     void RenderPerspectiveMarker(
         const CShaderProgram& shaderProgram,
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry
     ) const;
 
     // Рисует orthographic-вариант маркера.
     void RenderOrthographicMarker(
         const CShaderProgram& shaderProgram,
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry
     ) const;
 
     // Загружает подготовленные вершины в VBO и рисует их как GL_LINES.
     void UploadAndDrawLines(
         const CShaderProgram& shaderProgram,
-        const SGridFrameData& sFrameData,
+        const SViewData& sFrameData,
         const SGridGeometry& sGridGeometry,
         const void* pVertexData,
         GLsizeiptr nVertexDataSize,

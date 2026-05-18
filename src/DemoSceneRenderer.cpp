@@ -73,7 +73,7 @@ void CDemoSceneRenderer::Destroy()
 
 void CDemoSceneRenderer::Render(
     const CShaderProgram& shaderProgram,
-    const SGridFrameData& sFrameData,
+    const SViewData& sFrameData,
     const SGridGeometry& sGridGeometry
 ) const
 {
