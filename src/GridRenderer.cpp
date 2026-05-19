@@ -220,7 +220,6 @@ CGridRenderer::CGridRenderer()
 	m_sStyle.fMinorThickness = 0.75f;
 	m_sStyle.fMajorThickness = 1.05f;
 	m_sStyle.fAxisThickness = 1.6f;
-
 	// На этом этапе основной вариант сглаживания — аппаратный MSAA.
 	m_sStyle.fShaderAntialiasWidth = 0.75f;
 
@@ -236,7 +235,7 @@ CGridRenderer::CGridRenderer()
 	m_sStyle.bDrawDots = false;
 	m_sStyle.fDotRadius = 2.0f;
 
-	m_sStyle.bUseAdaptiveStep = true;
+	m_sStyle.bUseAdaptiveStep = false;
 	m_sStyle.dTargetMinorStepPixels = 28.0;
 
 	m_sStyle.vPlaneColorTop = glm::vec4(0.115f, 0.135f, 0.160f, 0.22f);
@@ -552,15 +551,12 @@ void CGridRenderer::Render(
 	const SGridShaderData& sGridData
 ) const
 {
+	(void)sViewData;
+
 	shaderProgram.Use();
 
-	// Viewport-данные пока передаются как обычные uniform'ы.
-	// Следующий архитектурный шаг — вынести их в общий Uniform Buffer.
-	shaderProgram.SetUniformMat4d("uProjection", sViewData.mProjection);
-	shaderProgram.SetUniformMat4d("uInvProjection", sViewData.mInvProjection);
-	shaderProgram.SetUniformVec2d("uViewportSize", sViewData.vViewportSize);
-
-	// Grid-specific данные уже подготовлены в ComputeGridData().
+	// Данные viewport/view/projection теперь приходят через общий UBO.
+	// Передаём только grid-specific uniform'ы.
 	shaderProgram.SetUniformVec3d("uGridOriginEye", sGridData.vGridOriginEye);
 	shaderProgram.SetUniformVec3d("uGridAxisXEye", sGridData.vGridAxisXEye);
 	shaderProgram.SetUniformVec3d("uGridAxisYEye", sGridData.vGridAxisYEye);

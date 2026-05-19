@@ -21,6 +21,7 @@ CApplication::CApplication()
 	// Это помогает избежать вырождения базиса камеры.
 	, m_dDefaultCameraPitchRadians(glm::radians(89.9))
 
+	// Запрашиваем MSAA 4x.
 	// Фактическое значение проверяется после создания OpenGL context.
 	, m_nRequestedMsaaSamples(64)
 	, m_nActualMsaaSamples(1)
@@ -81,9 +82,7 @@ void CApplication::InitializeGlfw()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	// Запрашиваем multisampled framebuffer.
-	//
-	// Важно: GLFW_SAMPLES нужно задавать до glfwCreateWindow().
+	// GLFW_SAMPLES нужно задавать до glfwCreateWindow().
 	glfwWindowHint(GLFW_SAMPLES, m_nRequestedMsaaSamples);
 }
 
@@ -103,8 +102,6 @@ void CApplication::CreateWindow()
 	}
 
 	glfwMakeContextCurrent(m_pWindow);
-
-	// Включаем вертикальную синхронизацию.
 	glfwSwapInterval(1);
 }
 
@@ -158,6 +155,8 @@ void CApplication::InitializeOpenGl()
 		std::cout << "Warning: MSAA was requested but is not active\n";
 	}
 
+	// Создаём общий UBO данных вида.
+	// Он используется shader'ами через ViewUniformBlock.
 	m_viewUniformBuffer.Initialize();
 }
 
@@ -186,11 +185,9 @@ void CApplication::InitializeScene()
 	m_gridRenderer.Initialize();
 	m_axisMarkerRenderer.Initialize();
 	m_demoSceneRenderer.Initialize();
-
 	// Стиль сетки берём из CGridRenderer.
 	// Дальше приложение меняет только параметры, для которых есть управление.
 	m_sGridStyle = m_gridRenderer.GetStyle();
-
 	// В демо оставлена одна стандартная координатная плоскость XOY.
 	m_sGridGeometry = CreateDefaultGridGeometry();
 
@@ -237,7 +234,8 @@ void CApplication::ProcessInput()
 		ResetCameraToDefaultView();
 	}
 
-	const bool bIsBPressed = glfwGetKey(m_pWindow, GLFW_KEY_B) == GLFW_PRESS;
+	const bool bIsBPressed =
+		glfwGetKey(m_pWindow, GLFW_KEY_B) == GLFW_PRESS;
 
 	if (bIsBPressed && !m_bWasBPressed)
 	{
@@ -251,7 +249,8 @@ void CApplication::ProcessInput()
 
 	m_bWasBPressed = bIsBPressed;
 
-	const bool bIsMPressed = glfwGetKey(m_pWindow, GLFW_KEY_M) == GLFW_PRESS;
+	const bool bIsMPressed =
+		glfwGetKey(m_pWindow, GLFW_KEY_M) == GLFW_PRESS;
 
 	if (bIsMPressed && !m_bWasMPressed)
 	{
@@ -265,7 +264,8 @@ void CApplication::ProcessInput()
 
 	m_bWasMPressed = bIsMPressed;
 
-	const bool bIsFPressed = glfwGetKey(m_pWindow, GLFW_KEY_F) == GLFW_PRESS;
+	const bool bIsFPressed =
+		glfwGetKey(m_pWindow, GLFW_KEY_F) == GLFW_PRESS;
 
 	if (bIsFPressed && !m_bWasFPressed)
 	{
@@ -279,7 +279,8 @@ void CApplication::ProcessInput()
 
 	m_bWasFPressed = bIsFPressed;
 
-	const bool bIsGPressed = glfwGetKey(m_pWindow, GLFW_KEY_G) == GLFW_PRESS;
+	const bool bIsGPressed =
+		glfwGetKey(m_pWindow, GLFW_KEY_G) == GLFW_PRESS;
 
 	if (bIsGPressed && !m_bWasGPressed)
 	{
@@ -292,32 +293,6 @@ void CApplication::ProcessInput()
 	}
 
 	m_bWasGPressed = bIsGPressed;
-
-	const bool bIsOPressed = glfwGetKey(m_pWindow, GLFW_KEY_O) == GLFW_PRESS;
-
-	if (bIsOPressed && !m_bWasOPressed)
-	{
-		m_bShowDemoObjects = !m_bShowDemoObjects;
-
-		std::cout << "Demo objects: "
-			<< (m_bShowDemoObjects ? "enabled" : "disabled")
-			<< '\n';
-	}
-
-	m_bWasOPressed = bIsOPressed;
-
-	const bool bIsXPressed = glfwGetKey(m_pWindow, GLFW_KEY_X) == GLFW_PRESS;
-
-	if (bIsXPressed && !m_bWasXPressed)
-	{
-		m_bGridXrayMode = !m_bGridXrayMode;
-
-		std::cout << "Grid x-ray mode: "
-			<< (m_bGridXrayMode ? "enabled" : "disabled")
-			<< '\n';
-	}
-
-	m_bWasXPressed = bIsXPressed;
 
 	const bool bIsAPressed =
 		glfwGetKey(m_pWindow, GLFW_KEY_A) == GLFW_PRESS;
@@ -388,6 +363,34 @@ void CApplication::ProcessInput()
 	}
 
 	m_bWasPeriodPressed = bIsPeriodPressed;
+
+	const bool bIsOPressed =
+		glfwGetKey(m_pWindow, GLFW_KEY_O) == GLFW_PRESS;
+
+	if (bIsOPressed && !m_bWasOPressed)
+	{
+		m_bShowDemoObjects = !m_bShowDemoObjects;
+
+		std::cout << "Demo objects: "
+			<< (m_bShowDemoObjects ? "enabled" : "disabled")
+			<< '\n';
+	}
+
+	m_bWasOPressed = bIsOPressed;
+
+	const bool bIsXPressed =
+		glfwGetKey(m_pWindow, GLFW_KEY_X) == GLFW_PRESS;
+
+	if (bIsXPressed && !m_bWasXPressed)
+	{
+		m_bGridXrayMode = !m_bGridXrayMode;
+
+		std::cout << "Grid x-ray mode: "
+			<< (m_bGridXrayMode ? "enabled" : "disabled")
+			<< '\n';
+	}
+
+	m_bWasXPressed = bIsXPressed;
 }
 
 void CApplication::RenderFrame()
@@ -456,13 +459,22 @@ void CApplication::RenderFrame()
 	// В демо оставлена только ортографическая проекция.
 	sViewData.bIsOrthographicProjection = true;
 
+	// Позицию камеры получаем из inverse view matrix.
+	// Это позволяет не зависеть от наличия отдельного GetPosition() в OrbitCamera.
+	const glm::dmat4 mInvView =
+		glm::inverse(mView);
+
+	const glm::dvec3 vCameraWorldPosition =
+		glm::dvec3(mInvView[3]);
+
 	const SViewUniformData sViewUniformData = CreateViewUniformData(
 		sViewData,
-		m_pCamera->GetPosition(),
+		vCameraWorldPosition,
 		dNearPlane,
 		dFarPlane
 	);
 
+	// Один раз за кадр обновляем общий UBO вида.
 	m_viewUniformBuffer.Update(sViewUniformData);
 	m_viewUniformBuffer.Bind();
 
@@ -482,9 +494,7 @@ void CApplication::RenderFrame()
 		);
 	}
 
-	// Подготовка данных сетки отделена от draw call.
-	// ComputeGridData считает adaptive step, major step, eye-space параметры
-	// плоскости и anchor около видимой области.
+	// Готовим параметры сетки отдельно от draw call.
 	m_gridRenderer.SetGeometry(m_sGridGeometry);
 
 	SGridShaderData sGridData;
@@ -498,13 +508,6 @@ void CApplication::RenderFrame()
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	// Сетка не пишет глубину.
-	//
-	// Обычный режим:
-	//   сетка проверяется по depth buffer и перекрывается объектами.
-	//
-	// X-ray режим:
-	//   depth test для сетки отключается, поэтому сетка видна поверх объектов.
 	glDepthMask(GL_FALSE);
 
 	if (m_bGridXrayMode)
@@ -541,12 +544,10 @@ void CApplication::RenderFrame()
 		}
 	}
 
-	// Возвращаем depth-состояние после отрисовки сетки.
 	glDepthMask(GL_TRUE);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
-	// Маркер начала координат рисуется как отдельная вспомогательная сущность.
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -556,7 +557,6 @@ void CApplication::RenderFrame()
 		m_sGridGeometry
 	);
 
-	// Базовое состояние на следующий кадр.
 	glDepthMask(GL_TRUE);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
@@ -608,7 +608,6 @@ void CApplication::CalculateCameraClippingPlanes(
 		? m_pCamera->GetDistance()
 		: m_dDefaultCameraDistance;
 
-	// Подстраиваем near/far под текущий zoom.
 	dNearPlane = std::clamp(
 		dCameraDistance * 0.0005,
 		0.00001,
@@ -809,7 +808,6 @@ void CApplication::MultiplyGridStepX(double dMultiplier)
 {
 	constexpr double dMinGridStep = 0.000001;
 	constexpr double dMaxGridStep = 1000000000.0;
-
 	// Ручное изменение шага отключает adaptive grid,
 	// иначе adaptive step перезапишет значение на следующем кадре.
 	m_sGridStyle.bUseAdaptiveStep = false;
@@ -829,7 +827,6 @@ void CApplication::MultiplyGridStepY(double dMultiplier)
 {
 	constexpr double dMinGridStep = 0.000001;
 	constexpr double dMaxGridStep = 1000000000.0;
-
 	// Ручное изменение шага отключает adaptive grid.
 	m_sGridStyle.bUseAdaptiveStep = false;
 
@@ -848,7 +845,6 @@ void CApplication::ChangeMajorLineFrequency(int nDelta)
 {
 	constexpr int nMinFrequency = 1;
 	constexpr int nMaxFrequency = 1000;
-
 	// Частота major-линий относится к ручным параметрам сетки.
 	m_sGridStyle.bUseAdaptiveStep = false;
 
@@ -1122,7 +1118,6 @@ void CApplication::ScrollCallback(
 	{
 		return;
 	}
-
 	// Компенсируем смещение target, чтобы zoom происходил к курсору.
 	const glm::dvec3 vTargetCorrection =
 		vGridPointBeforeZoom - vGridPointAfterZoom;

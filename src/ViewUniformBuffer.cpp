@@ -3,7 +3,6 @@
 CViewUniformBuffer::CViewUniformBuffer()
 	: m_nBufferId(0)
 {
-
 }
 
 CViewUniformBuffer::~CViewUniformBuffer()
@@ -11,15 +10,13 @@ CViewUniformBuffer::~CViewUniformBuffer()
 	Destroy();
 }
 
-CViewUniformBuffer::
-CViewUniformBuffer(CViewUniformBuffer&& other) noexcept
+CViewUniformBuffer::CViewUniformBuffer(CViewUniformBuffer&& other) noexcept
 	: m_nBufferId(other.m_nBufferId)
 {
 	other.m_nBufferId = 0;
 }
 
-CViewUniformBuffer&
-CViewUniformBuffer::operator=(CViewUniformBuffer&& other) noexcept
+CViewUniformBuffer& CViewUniformBuffer::operator=(CViewUniformBuffer&& other) noexcept
 {
 	if (this != &other)
 	{
@@ -42,12 +39,14 @@ void CViewUniformBuffer::Initialize()
 	glGenBuffers(1, &m_nBufferId);
 
 	glBindBuffer(GL_UNIFORM_BUFFER, m_nBufferId);
+
 	glBufferData(
 		GL_UNIFORM_BUFFER,
 		static_cast<GLsizeiptr>(sizeof(SViewUniformData)),
 		nullptr,
 		GL_DYNAMIC_DRAW
 	);
+
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 	Bind();
@@ -70,12 +69,14 @@ void CViewUniformBuffer::Update(const SViewUniformData& sData) const
 	}
 
 	glBindBuffer(GL_UNIFORM_BUFFER, m_nBufferId);
+
 	glBufferSubData(
 		GL_UNIFORM_BUFFER,
 		0,
 		static_cast<GLsizeiptr>(sizeof(SViewUniformData)),
 		&sData
 	);
+
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
@@ -107,12 +108,23 @@ SViewUniformData CreateViewUniformData(
 {
 	SViewUniformData sData;
 
-	sData.mView = glm::mat4(sViewData.mView);
-	sData.mProjection = glm::mat4(sViewData.mProjection);
-	sData.mInvView = glm::mat4(glm::inverse(sViewData.mView));
-	sData.mInvProjection = glm::mat4(sViewData.mInvProjection);
-	sData.mViewProj = glm::mat4(sViewData.mViewProj);
-	sData.mInvViewProj = glm::mat4(glm::inverse(sViewData.mViewProj));
+	sData.mView =
+		glm::mat4(sViewData.mView);
+
+	sData.mProjection =
+		glm::mat4(sViewData.mProjection);
+
+	sData.mInvView =
+		glm::mat4(glm::inverse(sViewData.mView));
+
+	sData.mInvProjection =
+		glm::mat4(sViewData.mInvProjection);
+
+	sData.mViewProj =
+		glm::mat4(sViewData.mViewProj);
+
+	sData.mInvViewProj =
+		glm::mat4(glm::inverse(sViewData.mViewProj));
 
 	const float fViewportWidth =
 		static_cast<float>(sViewData.vViewportSize.x);

@@ -1,11 +1,8 @@
 #version 430 core
+
 #include "common/ViewUniformBlock.glsl"
 
 layout(location = 0) out vec4 outColor;
-
-uniform dmat4 uProjection;
-uniform dmat4 uInvProjection;
-uniform dvec2 uViewportSize;
 
 uniform dvec3 uGridOriginEye;
 uniform dvec3 uGridAxisXEye;
@@ -13,7 +10,10 @@ uniform dvec3 uGridAxisYEye;
 uniform dvec3 uGridNormalEye;
 
 // Anchor для построения pattern'а сетки.
+//
 // Он находится около текущей видимой области и привязан к major step.
+// Благодаря этому round/distance-to-line работают не от огромных абсолютных
+// координат сетки, а от локальных координат около видимой области.
 uniform dvec3 uGridPatternOriginEye;
 
 uniform double uMinViewNormalDot;
@@ -32,6 +32,9 @@ uniform bool uShowMajorGrid;
 uniform bool uShowAxes;
 
 // Готовые шаги сетки.
+//
+// Эти значения рассчитываются на C++ стороне.
+// Shader не занимается adaptive-логикой и не подбирает шаг самостоятельно.
 uniform dvec2 uMinorStep;
 uniform dvec2 uMajorStep;
 
@@ -40,6 +43,10 @@ uniform float uMajorThickness;
 uniform float uAxisThickness;
 uniform float uDotRadius;
 
+// Ширина ручного shader-AA.
+//
+// 0.0 — ручное сглаживание выключено.
+// Это позволяет честно проверить эффект аппаратного MSAA.
 uniform float uShaderAntialiasWidth;
 
 uniform vec4 uPlaneColorTop;
@@ -131,35 +138,53 @@ float CreateDotMask(
 	);
 }
 
+vec4 BlendOverGridPlane(
+	vec4 vBaseColor,
+	vec4 vLineColor,
+	float fMask
+)
+{
+	const float fSafeMask =
+		clamp(fMask, 0.0, 1.0);
+
+	const vec3 vRgb =
+		mix(vBaseColor.rgb, vLineColor.rgb, fSafeMask);
+
+	const float fAlpha =
+		max(vBaseColor.a, vLineColor.a * fSafeMask);
+
+	return vec4(vRgb, fAlpha);
+}
+
 void main()
 {
 	// Восстанавливаем NDC текущего пикселя из gl_FragCoord.
-	const dvec2 vNdc = dvec2(
-		double(gl_FragCoord.x) / uViewportSize.x * 2.0 - 1.0,
-		double(gl_FragCoord.y) / uViewportSize.y * 2.0 - 1.0
+	const vec2 vNdc = vec2(
+		gl_FragCoord.x / uViewportWidth * 2.0 - 1.0,
+		gl_FragCoord.y / uViewportHeight * 2.0 - 1.0
 	);
 
-	const dvec4 vNearClip =
-		dvec4(vNdc.x, vNdc.y, -1.0, 1.0);
+	const vec4 vNearClip =
+		vec4(vNdc.x, vNdc.y, -1.0, 1.0);
 
-	const dvec4 vFarClip =
-		dvec4(vNdc.x, vNdc.y, 1.0, 1.0);
+	const vec4 vFarClip =
+		vec4(vNdc.x, vNdc.y, 1.0, 1.0);
 
-	dvec4 vNearEye =
-		uInvProjection * vNearClip;
+	vec4 vNearEye =
+		uInvProjectionMatrix * vNearClip;
 
-	dvec4 vFarEye =
-		uInvProjection * vFarClip;
+	vec4 vFarEye =
+		uInvProjectionMatrix * vFarClip;
 
 	vNearEye /= vNearEye.w;
 	vFarEye /= vFarEye.w;
 
 	// Луч текущего пикселя в eye-space.
 	const dvec3 vRayOriginEye =
-		vNearEye.xyz;
+		dvec3(vNearEye.xyz);
 
 	const dvec3 vRayDirectionEye =
-		normalize(vFarEye.xyz - vNearEye.xyz);
+		normalize(dvec3(vFarEye.xyz - vNearEye.xyz));
 
 	const double dDenom =
 		dot(vRayDirectionEye, uGridNormalEye);
@@ -171,6 +196,10 @@ void main()
 	}
 
 	// Пересечение eye-space луча с eye-space плоскостью сетки.
+	//
+	// dT может быть отрицательным, если фрагмент сетки оказался перед near plane.
+	// Такой фрагмент не отбрасываем: ниже depth будет вручную прижат
+	// к безопасному диапазону.
 	const double dT =
 		dot(uGridOriginEye - vRayOriginEye, uGridNormalEye) / dDenom;
 
@@ -205,6 +234,10 @@ void main()
 	}
 
 	// Локальные координаты pattern'а относительно anchor.
+	//
+	// Именно эти значения используются для round/distance-to-line/fwidth.
+	// Это защищает сетку от потери точности при больших абсолютных
+	// координатах на плоскости.
 	const dvec3 vGridPointFromPatternOriginEye =
 		vGridPointEye - uGridPatternOriginEye;
 
@@ -215,7 +248,6 @@ void main()
 		dot(vGridPointFromPatternOriginEye, uGridAxisYEye);
 
 	// Шаги уже рассчитаны на C++ стороне.
-	// Shader только использует готовые значения.
 	const double dMinorDistanceX =
 		DistanceToGridLine(dPatternX, uMinorStep.x);
 
@@ -341,7 +373,7 @@ void main()
 		}
 	}
 
-	// Рамка bounded-сетки остаётся привязана к абсолютным координатам сетки.
+	// Рамка bounded-сетки.
 	if (uIsBounded)
 	{
 		const float fBoundaryMinX = CreateLineMask(
@@ -408,23 +440,23 @@ void main()
 	vec4 vColor =
 		uDrawPlane ? vPlaneColor : vec4(0.0);
 
-	vColor = mix(vColor, vMinorColor, fMinorMask);
-	vColor = mix(vColor, vMajorColor, fMajorMask);
-	vColor = mix(vColor, vBoundaryColor, fBoundaryMask);
-	vColor = mix(vColor, vXAxisColor, fXAxisMask);
-	vColor = mix(vColor, vYAxisColor, fYAxisMask);
+	vColor = BlendOverGridPlane(vColor, vMinorColor, fMinorMask);
+	vColor = BlendOverGridPlane(vColor, vMajorColor, fMajorMask);
+	vColor = BlendOverGridPlane(vColor, vBoundaryColor, fBoundaryMask);
+	vColor = BlendOverGridPlane(vColor, vXAxisColor, fXAxisMask);
+	vColor = BlendOverGridPlane(vColor, vYAxisColor, fYAxisMask);
 
 	if (vColor.a <= 0.001 && !uDebugDepthZones)
 	{
 		discard;
 	}
 
-	// Depth считаем из eye-space позиции через projection.
-	const dvec4 vClipPosition =
-		uProjection * dvec4(vGridPointEye, 1.0);
+	// Depth считаем из eye-space позиции через projection matrix из UBO.
+	const vec4 vClipPosition =
+		uProjectionMatrix * vec4(vec3(vGridPointEye), 1.0);
 
 	const double dNdcZ =
-		vClipPosition.z / vClipPosition.w;
+		double(vClipPosition.z / vClipPosition.w);
 
 	const double dRawDepth =
 		dNdcZ * 0.5 + 0.5;
@@ -441,7 +473,6 @@ void main()
 	const bool bFarDepthZone =
 		dRawDepth > dSafeMaxDepth;
 
-	// Ручной depth clamp всегда включён.
 	const double dDepth = clamp(
 		dRawDepth,
 		dSafeMinDepth,
