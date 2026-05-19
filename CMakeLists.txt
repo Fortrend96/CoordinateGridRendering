@@ -48,6 +48,9 @@ set(PROJECT_SOURCES
 
     src/DemoSceneRenderer.h
     src/DemoSceneRenderer.cpp
+
+    src/ViewUniformBuffer.h
+    src/ViewUniformBuffer.cpp
 )
 
 set(PROJECT_SHADERS
@@ -59,6 +62,8 @@ set(PROJECT_SHADERS
 
     shaders/object.vert
     shaders/object.frag
+
+    shaders/common/ViewUniformBlock.glsl
 )
 
 add_executable(${PROJECT_NAME}
@@ -90,6 +95,7 @@ source_group("Source Files" FILES
     src/OrbitCamera.cpp
     src/AxisMarkerRenderer.cpp
     src/DemoSceneRenderer.cpp
+    src/ViewUniformBuffer.cpp
 )
 
 source_group("Header Files" FILES
@@ -99,6 +105,7 @@ source_group("Header Files" FILES
     src/OrbitCamera.h
     src/AxisMarkerRenderer.h
     src/DemoSceneRenderer.h
+    src/ViewUniformBuffer.h
 )
 
 source_group("Shaders" FILES

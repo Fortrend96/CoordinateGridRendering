@@ -1,4 +1,5 @@
 #version 430 core
+#include "common/ViewUniformBlock.glsl"
 
 layout(location = 0) out vec4 outColor;
 

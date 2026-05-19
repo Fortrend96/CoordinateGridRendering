@@ -1,10 +1,12 @@
 #pragma once
 
 #include <glad/glad.h>
-
 #include <glm/glm.hpp>
 
 #include <string>
+#include <filesystem>
+#include <vector>
+
 
 // Обёртка над OpenGL shader program.
 // Класс отвечает за:
@@ -92,6 +94,27 @@ private:
 
     // Возвращает location uniform'а.
     GLint GetUniformLocation(const std::string& strName) const;
+
+    /**
+        * @brief Читает исходный код шейдера из файла и запускает процесс раскрытия инклудов.
+        * @param strPath Путь к главному файлу шейдера.
+        * @return Полный текст шейдера со всеми встроенными зависимостями.
+    */
+    static std::string ReadShaderSource(const std::string& strPath);
+
+    /**
+     * @brief Рекурсивно обрабатывает директивы #include "..." в тексте шейдера.
+     * @param strSource Текущий обрабатываемый текст шейдера.
+     * @param shaderDirectory Путь к папке текущего файла для поиска относительных инклудов.
+     * @param arrIncludeStack Стек путей открытых файлов для предотвращения циклической рекурсии.
+     * @return Склеенный текст шейдера с развернутыми файлами зависимостей.
+     * @throws std::runtime_error При обнаружении циклической (бесконечной) рекурсии инклудов.
+     */
+    static std::string ResolveShaderIncludes(
+        const std::string& strSource,
+        const std::filesystem::path& shaderDirectory,
+        std::vector<std::filesystem::path>& arrInclydeStack
+    );
 
 private:
     // OpenGL id shader program.

@@ -5,6 +5,7 @@
 #include "GridRenderer.h"
 #include "OrbitCamera.h"
 #include "ShaderProgram.h"
+#include "ViewUniformBuffer.h"
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -247,4 +248,7 @@ private:
 	// true:
 	//   depth test для сетки отключается, поэтому сетка видна поверх фигур.
 	bool m_bGridXrayMode;
+
+	// Общий uniform buffer данных текущего viewport/camera.
+	CViewUniformBuffer m_viewUniformBuffer;
 };

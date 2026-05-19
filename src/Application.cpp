@@ -157,6 +157,8 @@ void CApplication::InitializeOpenGl()
 	{
 		std::cout << "Warning: MSAA was requested but is not active\n";
 	}
+
+	m_viewUniformBuffer.Initialize();
 }
 
 void CApplication::LoadShaders()
@@ -454,6 +456,16 @@ void CApplication::RenderFrame()
 	// В демо оставлена только ортографическая проекция.
 	sViewData.bIsOrthographicProjection = true;
 
+	const SViewUniformData sViewUniformData = CreateViewUniformData(
+		sViewData,
+		m_pCamera->GetPosition(),
+		dNearPlane,
+		dFarPlane
+	);
+
+	m_viewUniformBuffer.Update(sViewUniformData);
+	m_viewUniformBuffer.Bind();
+
 	// Сначала рисуем модельные объекты.
 	// Они записывают свою глубину в depth buffer.
 	glEnable(GL_DEPTH_TEST);
@@ -553,6 +565,8 @@ void CApplication::RenderFrame()
 
 void CApplication::Shutdown()
 {
+	m_viewUniformBuffer.Destroy();
+
 	m_demoSceneRenderer.Destroy();
 	m_axisMarkerRenderer.Destroy();
 	m_gridRenderer.Destroy();

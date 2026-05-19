@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
+#include <regex>
 
 CShaderProgram::CShaderProgram()
     : m_nProgramId(0)
@@ -45,9 +46,9 @@ void CShaderProgram::LoadFromFiles(
 {
     Destroy();
 
-    const std::string strVertexSource = ReadTextFile(strVertexShaderPath);
-    const std::string strFragmentSource = ReadTextFile(strFragmentShaderPath);
-
+    const std::string strVertexSource = ReadShaderSource(strVertexShaderPath);
+    const std::string strFragmentSource = ReadShaderSource(strFragmentShaderPath);
+    
     const GLuint nVertexShaderId = CompileShader(
         GL_VERTEX_SHADER,
         strVertexSource,
@@ -402,4 +403,91 @@ GLint CShaderProgram::GetUniformLocation(const std::string& strName) const
     }
 
     return nLocation;
+}
+
+std::string CShaderProgram::
+    ReadShaderSource(const std::string& strPath)
+{
+    const std::filesystem::path shaderPath(strPath);
+
+    std::vector<std::filesystem::path> arrIncludeStack;
+    arrIncludeStack.push_back(std::filesystem::absolute(shaderPath));
+
+    const std::string strSource = ReadTextFile(strPath);
+
+    return ResolveShaderIncludes(
+        strSource,
+        shaderPath.parent_path(),
+        arrIncludeStack
+    );
+}
+
+std::string CShaderProgram::ResolveShaderIncludes(
+    const std::string& strSource,
+    const std::filesystem::path& shaderDirectory,
+    std::vector<std::filesystem::path>& arrIncludeStack
+)
+{
+    std::stringstream outputStream;
+    std::istringstream inputStream(strSource);
+
+    std::string strLine;
+
+    const std::regex includeRegex(
+        R"shader(^\s*#include\s+"([^"]+)"\s*$)shader"
+    );
+
+        while (std::getline(inputStream, strLine))
+        {
+            std::smatch includeMatch;
+
+            if (!std::regex_match(strLine, includeMatch, includeRegex))
+            {
+                outputStream << strLine << '\n';
+                continue;
+            }
+
+            const std::filesystem::path includePath =
+                shaderDirectory / includeMatch[1].str();
+
+            const std::filesystem::path absoluteIncludePath =
+                std::filesystem::absolute(includePath).lexically_normal();
+
+            if (
+                std::find(
+                    arrIncludeStack.begin(),
+                    arrIncludeStack.end(),
+                    absoluteIncludePath
+                ) != arrIncludeStack.end()
+                )
+            {
+                throw std::runtime_error(
+                    "Recursive shader include detected: " +
+                    absoluteIncludePath.string()
+                );
+            }
+
+            arrIncludeStack.push_back(absoluteIncludePath);
+
+            const std::string strIncludeSource =
+                ReadTextFile(absoluteIncludePath.string());
+
+            outputStream << "// begin include: "
+                << includePath.string()
+                << '\n';
+
+            outputStream << ResolveShaderIncludes(
+                strIncludeSource,
+                absoluteIncludePath.parent_path(),
+                arrIncludeStack
+            );
+
+            outputStream << "// end include: "
+                << includePath.string()
+                << '\n';
+
+            arrIncludeStack.pop_back();
+        }
+
+        return outputStream.str();
 }
